@@ -5,6 +5,9 @@
     "dir": "dist/server",
     "entry": "index.cjs"
   },
+  "blocks": {
+    "entry": "src/devvit.ts"
+  },
   "menu": {
     "items": [
       {
