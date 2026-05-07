@@ -1,3 +1,5 @@
+console.log('[ModPulse Web] NEW DASHBOARD BUILD ACTIVE - JavaScript runtime initializing');
+
 type DashboardPayload = {
   meta: {
     subredditId: string | null;

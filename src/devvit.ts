@@ -26,24 +26,10 @@ Devvit.addMenuItem({
 });
 
 /**
- * Minimal custom post dashboard.
- *
- * The renderer intentionally uses only vstack and text while debugging custom
- * post visibility. This rules out unsupported Blocks props as the failure mode.
+ * Custom post type is now handled exclusively by Devvit Web entrypoint.
+ * See devvit.json: post.entrypoints.default.entry = modpulse.html
+ * This file now handles only Blocks-based features (menu items, etc.)
  */
-Devvit.addCustomPostType({
-  name: 'ModPulse',
-  render: () => {
-    console.log('[ModPulse] custom post render executed');
-
-    return Devvit.createElement(
-      'vstack',
-      undefined,
-      Devvit.createElement('text', undefined, 'ModPulse Working')
-    );
-  },
-});
-
-console.log('[ModPulse] custom post type registered');
+console.log('[ModPulse] Blocks registration layer ready (Web custom post handled separately)');
 
 export default Devvit;
