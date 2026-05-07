@@ -487,6 +487,159 @@ body {
   gap: 10px;
 }
 
+.activityCard {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.activityFeed {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  max-height: 380px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+.activityFeed::-webkit-scrollbar {
+  width: 8px;
+}
+
+.activityFeed::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.activityItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 2px 0;
+  animation: activityIn 260ms ease both;
+}
+
+@keyframes activityIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.activityRail {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100%;
+}
+
+.activityDot {
+  width: 11px;
+  height: 11px;
+  margin-top: 6px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.03);
+}
+
+.activityDotGood {
+  background: var(--good);
+  box-shadow: 0 0 0 4px rgba(67, 243, 197, 0.12);
+}
+
+.activityDotWarn {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(255, 204, 102, 0.12);
+}
+
+.activityDotBad {
+  background: var(--bad);
+  box-shadow: 0 0 0 4px rgba(255, 92, 122, 0.12);
+}
+
+.activityDotSoft {
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+
+.activityLine {
+  width: 1px;
+  flex: 1;
+  min-height: 18px;
+  margin-top: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(255, 255, 255, 0.03));
+}
+
+.activityBody {
+  min-width: 0;
+  padding: 11px 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.activityBody:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-1px);
+}
+
+.activityTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.activityAction {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.activityTime {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted2);
+}
+
+.activityMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.activityDetail {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.activityEmpty {
+  padding: 8px 4px 6px;
+}
+
+.activityEmptyTitle {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.activityEmptyBody {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .stat {
   border: 1px solid var(--stroke);
   border-radius: 14px;
@@ -756,6 +909,9 @@ body {
   }
   .healthGrid {
     grid-template-columns: 1fr;
+  }
+  .activityFeed {
+    max-height: 320px;
   }
 }
 

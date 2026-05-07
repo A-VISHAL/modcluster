@@ -4,6 +4,7 @@
  */
 
 import { redis } from '@devvit/redis';
+import { logActivity } from './activity';
 
 /**
  * Shift handover storage for ModPulse.
@@ -50,6 +51,15 @@ export async function saveHandover(subredditId: string, handover: HandoverCard):
   await redis.zAdd(handoverHistoryKey(subredditId), {
     score: handover.timestamp,
     member: payload,
+  });
+
+  await logActivity({
+    subredditId,
+    action: 'Shift handover submitted',
+    moderator: handover.author,
+    tone: 'soft',
+    detail: handover.notes || handover.activeSituations || 'Shift handover recorded.',
+    timestamp: handover.timestamp,
   });
 
   const historyCount = await redis.zCard(handoverHistoryKey(subredditId));

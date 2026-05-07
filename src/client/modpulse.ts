@@ -29,6 +29,15 @@ type DashboardPayload = {
       notes: string;
     }>;
   };
+  activity: Array<{
+    id: string;
+    subredditId: string;
+    action: string;
+    moderator: string | null;
+    detail: string | null;
+    tone: 'good' | 'warn' | 'bad' | 'soft';
+    timestamp: number;
+  }>;
   jury: {
     pending: Array<{
       id: string;
@@ -107,6 +116,20 @@ const chip = (label: string, tone: 'good' | 'warn' | 'bad' | 'soft') => {
 };
 
 const fmtTime = (ts: number) => new Date(ts).toLocaleString();
+
+const relativeTime = (timestamp: number) => {
+  const deltaSeconds = Math.max(1, Math.floor((Date.now() - timestamp) / 1000));
+  if (deltaSeconds < 60) return `${deltaSeconds}s ago`;
+
+  const deltaMinutes = Math.floor(deltaSeconds / 60);
+  if (deltaMinutes < 60) return `${deltaMinutes}m ago`;
+
+  const deltaHours = Math.floor(deltaMinutes / 60);
+  if (deltaHours < 24) return `${deltaHours}h ago`;
+
+  const deltaDays = Math.floor(deltaHours / 24);
+  return `${deltaDays}d ago`;
+};
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (character) => {
@@ -335,24 +358,80 @@ const renderHealth = (payload: DashboardPayload) => {
   );
 };
 
+const renderActivity = (payload: DashboardPayload) => {
+  const feed = byId<HTMLDivElement>('activityFeed');
+  const items = payload.activity;
+
+  if (!items.length) {
+    feed.innerHTML = `
+      <div class="activityEmpty">
+        <div class="activityEmptyTitle">No recent moderator activity</div>
+        <div class="activityEmptyBody">Actions from jury votes, handovers, and system signals will appear here as the subreddit gets active.</div>
+      </div>
+    `;
+    return;
+  }
+
+  feed.innerHTML = items
+    .slice(0, 12)
+    .map((item, index, list) => {
+      const toneClass =
+        item.tone === 'good' ? 'activityDotGood' : item.tone === 'bad' ? 'activityDotBad' : item.tone === 'warn' ? 'activityDotWarn' : 'activityDotSoft';
+      const chipClass =
+        item.tone === 'good' ? 'chipGood' : item.tone === 'bad' ? 'chipBad' : item.tone === 'warn' ? 'chipWarn' : 'chipSoft';
+
+      return `
+        <div class="activityItem" style="animation-delay:${Math.min(index * 45, 180)}ms">
+          <div class="activityRail">
+            <div class="activityDot ${toneClass}"></div>
+            ${index === list.length - 1 ? '' : '<div class="activityLine"></div>'}
+          </div>
+          <div class="activityBody">
+            <div class="activityTop">
+              <div class="activityAction">${escapeHtml(item.action)}</div>
+              <div class="activityTime">${escapeHtml(relativeTime(item.timestamp))}</div>
+            </div>
+            <div class="activityMeta">
+              <span class="chip ${chipClass}">${item.moderator ? escapeHtml(item.moderator) : 'system'}</span>
+              <span class="activityDetail">${escapeHtml(item.detail || 'Operational update recorded.')}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+};
+
 const fetchDashboard = async (): Promise<DashboardPayload> => {
+  console.log('[ModPulse Web] dashboard refresh requested');
   const res = await fetch('/api/dashboard', { method: 'GET' });
   if (!res.ok) throw new Error(`dashboard fetch failed: ${res.status}`);
-  return (await res.json()) as DashboardPayload;
+  const payload = (await res.json()) as DashboardPayload;
+  console.log('[ModPulse Web] dashboard refresh received', {
+    subredditId: payload.meta.subredditId,
+    activityCount: payload.activity.length,
+    pendingCases: payload.jury.pending.length,
+    resolvedCases: payload.jury.resolved.length,
+  });
+  return payload;
 };
 
 const postJson = async (path: string, body: unknown) => {
+  console.log('[ModPulse Web] POST request', { path, body });
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
-  return (await res.json()) as unknown;
+  const payload = (await res.json()) as unknown;
+  console.log('[ModPulse Web] POST response', { path, status: res.status, payload });
+  return payload;
 };
 
 const vote = async (caseId: string, vote: 'approve' | 'remove' | 'abstain') => {
   try {
+    console.log('[ModPulse Web] jury vote clicked', { caseId, vote });
     const result = (await postJson('/api/jury/vote', { caseId, vote })) as { ok: boolean; duplicate?: boolean; resolved?: boolean };
     if (result.duplicate) showToast('Already voted on this case.');
     else showToast(result.resolved ? 'Vote recorded — case resolved.' : 'Vote recorded.');
@@ -488,6 +567,7 @@ const wireTopActions = () => {
 let lastPayload: DashboardPayload | null = null;
 
 const refresh = async () => {
+  console.log('[ModPulse Web] refreshing dashboard state');
   const payload = await fetchDashboard();
   lastPayload = payload;
 
@@ -497,6 +577,7 @@ const refresh = async () => {
   renderHandover(payload);
   renderJury(payload);
   renderHealth(payload);
+  renderActivity(payload);
 };
 
 const wireJuryModal = () => {

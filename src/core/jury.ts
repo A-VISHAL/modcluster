@@ -6,6 +6,7 @@
  */
 
 import { redis } from '@devvit/redis';
+import { logActivity, type ActivityTone } from './activity';
 
 export type JuryVoteValue = 'approve' | 'remove' | 'abstain';
 export type JuryCaseStatus = 'pending' | 'resolved';
@@ -136,6 +137,39 @@ export async function saveNewJuryCase(juryCase: JuryCase): Promise<void> {
     score: juryCase.createdAt,
     member: juryCase.id,
   });
+
+  await logActivity({
+    subredditId: juryCase.subredditId,
+    action: 'Jury case opened',
+    moderator: juryCase.createdBy,
+    tone: 'warn',
+    detail: `${juryCase.postId} • ${juryCase.reason || 'Flagged for review.'}`,
+    timestamp: juryCase.createdAt,
+  });
+
+  const text = `${juryCase.reason} ${juryCase.ruleCitation} ${juryCase.contextNotes}`.toLowerCase();
+  if (text.includes('spam') || text.includes('brigad') || text.includes('vote manipulation')) {
+    await logActivity({
+      subredditId: juryCase.subredditId,
+      action: 'Spam cluster flagged',
+      moderator: juryCase.createdBy,
+      tone: 'bad',
+      detail: `${juryCase.postId} • Clustered signals detected.`,
+      timestamp: juryCase.createdAt + 1,
+    });
+  }
+
+  if (text.includes('harass') || text.includes('abuse') || text.includes('civil') || text.includes('toxic')) {
+    await logActivity({
+      subredditId: juryCase.subredditId,
+      action: 'Toxicity spike detected',
+      moderator: juryCase.createdBy,
+      tone: 'bad',
+      detail: `${juryCase.postId} • Escalating civility signals.`,
+      timestamp: juryCase.createdAt + 2,
+    });
+  }
+
   await trimQueue(juryActiveKey(juryCase.subredditId));
 }
 
@@ -207,6 +241,12 @@ export async function addVote(input: {
   vote: JuryVoteValue;
   timestamp?: number;
 }): Promise<{ juryCase: JuryCase; duplicate: boolean; resolved: boolean }> {
+  console.log('[ModPulse][jury] addVote start', {
+    caseId: input.caseId,
+    moderator: input.moderator,
+    vote: input.vote,
+  });
+
   const juryCase = await fetchJuryCase(input.caseId);
 
   if (!juryCase) {
@@ -222,6 +262,10 @@ export async function addVote(input: {
   );
 
   if (hasExistingVote) {
+    console.log('[ModPulse][jury] duplicate vote blocked', {
+      caseId: input.caseId,
+      moderator: input.moderator,
+    });
     return { juryCase, duplicate: true, resolved: false };
   }
 
@@ -237,22 +281,76 @@ export async function addVote(input: {
     ],
   };
 
+  const voteTone: ActivityTone = input.vote === 'remove' ? 'bad' : input.vote === 'approve' ? 'good' : 'soft';
+  const voteAction =
+    input.vote === 'remove'
+      ? 'Moderator voted REMOVE'
+      : input.vote === 'approve'
+        ? 'Moderator approved case'
+        : 'Moderator abstained from jury vote';
+
+  await logActivity({
+    subredditId: juryCase.subredditId,
+    action: voteAction,
+    moderator: input.moderator,
+    tone: voteTone,
+    detail: `${juryCase.postId} • ${summarizeVoteCounts(updatedCase.votes)}`,
+    timestamp: input.timestamp ?? Date.now(),
+  });
+
+  if (updatedCase.votes.length === 1 && input.vote !== 'abstain') {
+    await logActivity({
+      subredditId: juryCase.subredditId,
+      action: 'Case escalated',
+      moderator: input.moderator,
+      tone: 'warn',
+      detail: `${juryCase.postId} • First actionable vote received.`,
+      timestamp: (input.timestamp ?? Date.now()) + 1,
+    });
+  }
+
   const verdict = calculateVerdict(updatedCase.votes);
 
   if (verdict) {
+    console.log('[ModPulse][jury] verdict resolved', {
+      caseId: updatedCase.id,
+      subredditId: updatedCase.subredditId,
+      verdict,
+      voteCounts: summarizeVoteCounts(updatedCase.votes),
+    });
+
     updatedCase.status = 'resolved';
     updatedCase.finalVerdict = verdict;
     updatedCase.resolvedAt = Date.now();
     updatedCase.moderationSummary = generateModerationSummary(updatedCase);
+
+    await logActivity({
+      subredditId: juryCase.subredditId,
+      action: 'Jury verdict resolved',
+      moderator: input.moderator,
+      tone: verdict === 'remove' ? 'bad' : 'good',
+      detail: `${juryCase.postId} • Verdict: ${verdict.toUpperCase()}`,
+      timestamp: updatedCase.resolvedAt,
+    });
   }
 
   await saveJuryCase(updatedCase);
+  console.log('[ModPulse][jury] case saved', {
+    caseId: updatedCase.id,
+    status: updatedCase.status,
+    finalVerdict: updatedCase.finalVerdict,
+    voteCounts: summarizeVoteCounts(updatedCase.votes),
+  });
 
   if (updatedCase.status === 'resolved') {
     await redis.zRem(juryActiveKey(updatedCase.subredditId), [updatedCase.id]);
     await redis.zAdd(juryHistoryKey(updatedCase.subredditId), {
       score: updatedCase.resolvedAt ?? Date.now(),
       member: updatedCase.id,
+    });
+    console.log('[ModPulse][jury] moved case to resolved queue', {
+      caseId: updatedCase.id,
+      subredditId: updatedCase.subredditId,
     });
     await trimQueue(juryHistoryKey(updatedCase.subredditId));
   }

@@ -6,11 +6,13 @@ import {
   fetchHandoverHistory,
   saveHandover,
 } from '../core/handover';
+import { fetchRecentActivity } from '../core/activity';
 import {
   addVote,
   countVotes,
   createJuryCase,
   fetchActiveCases,
+  fetchJuryCase,
   fetchResolvedCases,
   saveNewJuryCase,
   type JuryVoteValue,
@@ -65,6 +67,7 @@ type DashboardPayload = {
     active: Awaited<ReturnType<typeof fetchActiveHandover>>;
     history: Awaited<ReturnType<typeof fetchHandoverHistory>>;
   };
+  activity: Awaited<ReturnType<typeof fetchRecentActivity>>;
   jury: {
     pending: DashboardJuryCase[];
     resolved: DashboardJuryCase[];
@@ -205,6 +208,12 @@ api.get('/dashboard', async (c) => {
   const subredditId = context.subredditId ?? null;
   const username = context.username ?? null;
 
+  console.log('[ModPulse][api] dashboard refresh', {
+    subredditId,
+    username,
+    now,
+  });
+
   let redisConnected = false;
   try {
     // Simple connectivity check. If Redis is down/misconfigured, this will throw.
@@ -216,6 +225,7 @@ api.get('/dashboard', async (c) => {
 
   let activeHandover = null;
   let history: Awaited<ReturnType<typeof fetchHandoverHistory>> = [];
+  let activity: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
   let juryCases: Awaited<ReturnType<typeof fetchActiveCases>> = [];
   let resolvedCases: Awaited<ReturnType<typeof fetchResolvedCases>> = [];
 
@@ -227,6 +237,7 @@ api.get('/dashboard', async (c) => {
       fetchActiveCases(subredditId, 10),
       fetchResolvedCases(subredditId, 5),
     ]);
+    activity = await fetchRecentActivity(subredditId, 12);
   }
 
   const seed = subredditId ? subredditId.length : 13;
@@ -283,6 +294,7 @@ api.get('/dashboard', async (c) => {
       active: activeHandover,
       history,
     },
+    activity,
     jury: {
       pending,
       resolved,
@@ -335,6 +347,12 @@ api.post('/jury/case', async (c) => {
     return c.json({ ok: false, error: 'postId is required.' }, 400);
   }
 
+  console.log('[ModPulse][api] create jury case request', {
+    subredditId,
+    username,
+    postId,
+  });
+
   const juryCase = createJuryCase({
     subredditId,
     postId,
@@ -354,6 +372,12 @@ api.post('/jury/case', async (c) => {
 
   await saveNewJuryCase(juryCase);
 
+  console.log('[ModPulse][api] jury case created', {
+    caseId: juryCase.id,
+    subredditId: juryCase.subredditId,
+    postId: juryCase.postId,
+  });
+
   return c.json({ ok: true, id: juryCase.id }, 200);
 });
 
@@ -366,17 +390,41 @@ api.post('/jury/vote', async (c) => {
     vote: JuryVoteValue;
   }>();
 
+  console.log('[ModPulse][api] vote request', {
+    subredditId,
+    username,
+    caseId: input.caseId,
+    vote: input.vote,
+  });
+
+  const existingCase = await fetchJuryCase(input.caseId);
+  if (!existingCase) {
+    console.log('[ModPulse][api] vote rejected - case missing', { caseId: input.caseId });
+    return c.json({ ok: false, error: 'Jury case not found.' }, 404);
+  }
+
+  if (existingCase.subredditId !== subredditId) {
+    console.log('[ModPulse][api] vote rejected - subreddit mismatch', {
+      caseId: input.caseId,
+      caseSubredditId: existingCase.subredditId,
+      requestSubredditId: subredditId,
+    });
+    return c.json({ ok: false, error: 'Case does not belong to this subreddit.' }, 400);
+  }
+
   const { juryCase, duplicate, resolved } = await addVote({
     caseId: input.caseId,
     moderator: username,
     vote: input.vote,
   });
 
-  // A future step: when resolved, run the actual moderation action (remove/approve)
-  // and persist an audit record. For hackathon, we just demonstrate collaboration.
-  if (juryCase.subredditId !== subredditId) {
-    return c.json({ ok: false, error: 'Case does not belong to this subreddit.' }, 400);
-  }
+  console.log('[ModPulse][api] vote mutation completed', {
+    caseId: juryCase.id,
+    duplicate,
+    resolved,
+    status: juryCase.status,
+    finalVerdict: juryCase.finalVerdict,
+  });
 
   return c.json({ ok: true, duplicate, resolved }, 200);
 });
