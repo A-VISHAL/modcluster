@@ -25,7 +25,9 @@
   },
   "forms": {
     "mopComment": "/internal/form/mop-comment-submit",
-    "mopPost": "/internal/form/mop-post-submit"
+    "mopPost": "/internal/form/mop-post-submit",
+    "handoverForm": "/internal/form/handover-submit",
+    "viewHandover": "/internal/form/handover-view-submit"
   },
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"

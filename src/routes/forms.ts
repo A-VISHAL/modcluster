@@ -153,3 +153,15 @@ forms.post('/handover-submit', async (c) => {
     );
   }
 });
+
+// Read-only handover view submission endpoint for the existing web route flow.
+forms.post('/handover-view-submit', async (c) => {
+  await c.req.json<Record<string, never>>();
+
+  return c.json<UiResponse>(
+    {
+      showToast: 'Current handover reviewed.',
+    },
+    200
+  );
+});
