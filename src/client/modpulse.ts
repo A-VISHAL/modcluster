@@ -1,0 +1,569 @@
+type DashboardPayload = {
+  meta: {
+    subredditId: string | null;
+    username: string | null;
+    now: number;
+  };
+  status: {
+    redisConnected: boolean;
+    liveModeration: boolean;
+    jurySystemActive: boolean;
+  };
+  handover: {
+    active: {
+      author: string;
+      timestamp: number;
+      activeSituations: string;
+      usersToWatch: string;
+      priorityPosts: string;
+      notes: string;
+    } | null;
+    history: Array<{
+      author: string;
+      timestamp: number;
+      activeSituations: string;
+      usersToWatch: string;
+      priorityPosts: string;
+      notes: string;
+    }>;
+  };
+  jury: {
+    pending: Array<{
+      id: string;
+      postId: string;
+      createdAt: number;
+      createdBy: string;
+      reason: string;
+      ruleCitation: string;
+      contextNotes: string;
+      votes: { approve: number; remove: number; abstain: number };
+      finalVerdict: 'approve' | 'remove' | null;
+      status: 'pending' | 'resolved';
+      priority: 'low' | 'medium' | 'high';
+      resolvedAt?: number;
+      ai: {
+        summary: string;
+        category: string;
+        similarCases: string[];
+        suggestedAction: 'Remove' | 'Approve' | 'Redirect' | 'Lock thread';
+        confidence: 'low' | 'medium' | 'high';
+      };
+    }>;
+    resolved: Array<{
+      id: string;
+      postId: string;
+      createdAt: number;
+      createdBy: string;
+      reason: string;
+      ruleCitation: string;
+      contextNotes: string;
+      votes: { approve: number; remove: number; abstain: number };
+      finalVerdict: 'approve' | 'remove' | null;
+      status: 'pending' | 'resolved';
+      priority: 'low' | 'medium' | 'high';
+      resolvedAt?: number;
+      ai: {
+        summary: string;
+        category: string;
+        similarCases: string[];
+        suggestedAction: 'Remove' | 'Approve' | 'Redirect' | 'Lock thread';
+        confidence: 'low' | 'medium' | 'high';
+      };
+    }>;
+  };
+  communityHealth: {
+    reportsToday: number;
+    toxicityAlerts: number;
+    queueBacklog: number;
+    moderatorWorkload: number;
+    burnoutRisk: 'low' | 'medium' | 'high';
+  };
+};
+
+const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
+const toastEl = byId<HTMLDivElement>('toast');
+
+const showToast = (message: string) => {
+  toastEl.textContent = message;
+  toastEl.classList.add('show');
+  window.setTimeout(() => toastEl.classList.remove('show'), 2200);
+};
+
+const chip = (label: string, tone: 'good' | 'warn' | 'bad' | 'soft') => {
+  const el = document.createElement('span');
+  el.className =
+    tone === 'good'
+      ? 'chip chipGood'
+      : tone === 'warn'
+        ? 'chip chipWarn'
+        : tone === 'bad'
+          ? 'chip chipBad'
+          : 'chip chipSoft';
+  el.textContent = label;
+  return el;
+};
+
+const fmtTime = (ts: number) => new Date(ts).toLocaleString();
+
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case '&':
+        return '&amp;';
+      case '<':
+        return '&lt;';
+      case '>':
+        return '&gt;';
+      case '"':
+        return '&quot;';
+      case "'":
+        return '&#39;';
+      default:
+        return character;
+    }
+  });
+
+const renderStatus = (payload: DashboardPayload) => {
+  const row = byId<HTMLDivElement>('statusRow');
+  row.innerHTML = '';
+
+  row.append(
+    chip(payload.status.redisConnected ? 'Redis Connected' : 'Redis Offline', payload.status.redisConnected ? 'good' : 'bad'),
+    chip(payload.status.liveModeration ? 'Live Moderation' : 'Paused', payload.status.liveModeration ? 'good' : 'warn'),
+    chip(payload.status.jurySystemActive ? 'Jury System Active' : 'Jury Disabled', payload.status.jurySystemActive ? 'good' : 'warn')
+  );
+};
+
+const renderMeta = (payload: DashboardPayload) => {
+  const meta = byId<HTMLDivElement>('metaPill');
+  const who = payload.meta.username ? `u/${payload.meta.username}` : 'unknown user';
+  const where = payload.meta.subredditId ? payload.meta.subredditId : 'unknown subreddit';
+  meta.textContent = `${who} • ${where} • ${new Date(payload.meta.now).toLocaleTimeString()}`;
+};
+
+const renderHeroMetrics = (payload: DashboardPayload) => {
+  byId<HTMLDivElement>('mQueue').textContent = String(payload.communityHealth.queueBacklog);
+  byId<HTMLDivElement>('mReports').textContent = String(payload.communityHealth.reportsToday);
+  byId<HTMLDivElement>('mToxic').textContent = String(payload.communityHealth.toxicityAlerts);
+  byId<HTMLDivElement>('mBurnout').textContent = payload.communityHealth.burnoutRisk.toUpperCase();
+};
+
+const renderHandover = (payload: DashboardPayload) => {
+  const body = byId<HTMLDivElement>('handoverBody');
+  const active = payload.handover.active;
+
+  if (!active) {
+    body.innerHTML = `
+      <div class="kv">
+        <div class="kvLabel">No active handover</div>
+        <div class="kvValue">Create one to share shift context with the next moderator. This is persisted in Redis per subreddit.</div>
+      </div>
+      <div class="kvGrid">
+        <div class="kv"><div class="kvLabel">Active situations</div><div class="kvValue">—</div></div>
+        <div class="kv"><div class="kvLabel">Users to watch</div><div class="kvValue">—</div></div>
+        <div class="kv"><div class="kvLabel">Priority posts</div><div class="kvValue">—</div></div>
+        <div class="kv"><div class="kvLabel">Moderator notes</div><div class="kvValue">—</div></div>
+      </div>
+    `;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="kv">
+      <div class="kvLabel">Active handover</div>
+      <div class="kvValue"><b>${escapeHtml(active.author)}</b> • ${escapeHtml(fmtTime(active.timestamp))}</div>
+    </div>
+    <div class="kvGrid">
+      <div class="kv"><div class="kvLabel">Active situations</div><div class="kvValue">${escapeHtml(active.activeSituations || 'None')}</div></div>
+      <div class="kv"><div class="kvLabel">Users to watch</div><div class="kvValue">${escapeHtml(active.usersToWatch || 'None')}</div></div>
+      <div class="kv"><div class="kvLabel">Priority posts</div><div class="kvValue">${escapeHtml(active.priorityPosts || 'None')}</div></div>
+      <div class="kv"><div class="kvLabel">Moderator notes</div><div class="kvValue">${escapeHtml(active.notes || 'None')}</div></div>
+    </div>
+  `;
+};
+
+const renderJury = (payload: DashboardPayload) => {
+  const list = byId<HTMLDivElement>('juryList');
+  const cases = payload.jury.pending;
+  const resolved = payload.jury.resolved;
+
+  if (!cases.length && !resolved.length) {
+    list.innerHTML = `
+      <div class="case">
+        <div class="caseTitle">No pending cases</div>
+        <div class="caseMeta">When moderators flag borderline content, it appears here for collaborative voting.</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = '';
+  const renderCase = (juryCase: (typeof cases)[number], bucket: 'pending' | 'resolved') => {
+    const el = document.createElement('div');
+    el.className = 'case';
+
+    const priorityTone = juryCase.priority === 'high' ? 'chipBad' : juryCase.priority === 'medium' ? 'chipWarn' : 'chipSoft';
+    const verdictTone = juryCase.finalVerdict === 'remove' ? 'chipBad' : juryCase.finalVerdict === 'approve' ? 'chipGood' : 'chipSoft';
+    const verdictLabel =
+      bucket === 'resolved'
+        ? `Verdict: ${(juryCase.finalVerdict ?? 'PENDING').toUpperCase()}`
+        : juryCase.finalVerdict
+          ? `Verdict: ${juryCase.finalVerdict.toUpperCase()}`
+          : 'Verdict: PENDING';
+
+    const threshold = 2;
+    const progress = Math.min(100, Math.round((Math.max(juryCase.votes.approve, juryCase.votes.remove) / threshold) * 100));
+    const progressTone =
+      juryCase.votes.remove >= threshold
+        ? 'linear-gradient(90deg, rgba(255,92,122,0.75), rgba(255,204,102,0.55))'
+        : juryCase.votes.approve >= threshold
+          ? 'linear-gradient(90deg, rgba(67,243,197,0.75), rgba(45,212,255,0.55))'
+          : 'linear-gradient(90deg, rgba(67,243,197,0.55), rgba(124,92,255,0.55))';
+
+    el.innerHTML = `
+      <div class="caseTop">
+        <div>
+          <div class="caseTitle">${escapeHtml(juryCase.reason || 'Jury review')}</div>
+          <div class="caseMeta">
+            <b>Post</b>: ${escapeHtml(juryCase.postId)} • <b>Rule</b>: ${escapeHtml(juryCase.ruleCitation || '—')}<br/>
+            <b>Opened</b>: ${escapeHtml(fmtTime(juryCase.createdAt))} by ${escapeHtml(juryCase.createdBy)}
+            ${bucket === 'resolved' && juryCase.resolvedAt ? `<br/><b>Resolved</b>: ${escapeHtml(fmtTime(juryCase.resolvedAt))}` : ``}
+          </div>
+        </div>
+        <div class="caseTags">
+          <span class="chip ${priorityTone}">Priority: ${juryCase.priority.toUpperCase()}</span>
+          <span class="chip ${verdictTone}">${verdictLabel}</span>
+        </div>
+      </div>
+      <div class="progress" aria-hidden="true"><div class="progressFill" style="width:${progress}%;background:${progressTone}"></div></div>
+      <div class="voteRow">
+        <div class="voteCounts">
+          Votes: <b>${juryCase.votes.approve}</b> approve / <b>${juryCase.votes.remove}</b> remove / <b>${juryCase.votes.abstain}</b> abstain
+        </div>
+        <div class="btnGroup">
+          ${
+            bucket === 'pending'
+              ? `
+          <button class="btn btnSoft" data-action="approve" data-id="${escapeHtml(juryCase.id)}" type="button">Approve</button>
+          <button class="btn btnSoft" data-action="remove" data-id="${escapeHtml(juryCase.id)}" type="button">Remove</button>
+          <button class="btn btnGhost" data-action="abstain" data-id="${escapeHtml(juryCase.id)}" type="button">Abstain</button>
+          `
+              : `<span class="chip chipSoft"><span class="pulseDot"></span>&nbsp;Resolved</span>`
+          }
+        </div>
+      </div>
+      <div class="aiPanel" data-ai="${escapeHtml(juryCase.id)}">
+        <div class="aiTitleRow">
+          <div class="aiTitle">AI moderation summary</div>
+          <span class="chip chipSoft">Suggest: ${escapeHtml(juryCase.ai.suggestedAction)} • ${escapeHtml(juryCase.ai.confidence.toUpperCase())}</span>
+        </div>
+        <div class="aiBody">
+          <div class="aiLine"><b>Category</b>: ${escapeHtml(juryCase.ai.category)}</div>
+          <div class="aiLine"><b>Summary</b>: ${escapeHtml(juryCase.ai.summary)}</div>
+          <div>
+            <div class="aiLine"><b>Similar cases</b>:</div>
+            <ul class="aiList">
+              ${juryCase.ai.similarCases.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}
+            </ul>
+          </div>
+        </div>
+      </div>
+    `;
+
+    list.appendChild(el);
+  };
+
+  if (cases.length) {
+    for (const juryCase of cases) renderCase(juryCase, 'pending');
+  }
+
+  if (resolved.length) {
+    const divider = document.createElement('div');
+    divider.className = 'skeleton';
+    divider.textContent = 'Recently resolved';
+    list.appendChild(divider);
+    for (const juryCase of resolved) renderCase(juryCase, 'resolved');
+  }
+
+  list.querySelectorAll<HTMLButtonElement>('button[data-action][data-id]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (!action || !id) return;
+
+      await vote(id, action as 'approve' | 'remove' | 'abstain');
+    });
+  });
+
+  list.querySelectorAll<HTMLElement>('.aiPanel').forEach((panel) => {
+    const title = panel.querySelector<HTMLElement>('.aiTitleRow');
+    if (!title) return;
+    title.addEventListener('click', () => panel.classList.toggle('open'));
+  });
+};
+
+const renderHealth = (payload: DashboardPayload) => {
+  const grid = byId<HTMLDivElement>('healthGrid');
+  const h = payload.communityHealth;
+  const burnoutTone = h.burnoutRisk === 'high' ? 'chipBad' : h.burnoutRisk === 'medium' ? 'chipWarn' : 'chipGood';
+
+  grid.innerHTML = '';
+  const stat = (label: string, value: string, extraChip?: HTMLElement) => {
+    const el = document.createElement('div');
+    el.className = 'stat';
+    el.innerHTML = `<div class="statLabel">${escapeHtml(label)}</div><div class="statValue">${escapeHtml(value)}</div>`;
+    if (extraChip) {
+      extraChip.style.marginTop = '10px';
+      el.appendChild(extraChip);
+    }
+    return el;
+  };
+
+  grid.append(
+    stat('Reports today', String(h.reportsToday)),
+    stat('Toxicity alerts', String(h.toxicityAlerts)),
+    stat('Queue backlog', String(h.queueBacklog)),
+    stat('Moderator workload', `${h.moderatorWorkload}%`, (() => {
+      const el = document.createElement('span');
+      el.className = `chip ${burnoutTone}`;
+      el.textContent = `Burnout: ${h.burnoutRisk.toUpperCase()}`;
+      return el;
+    })())
+  );
+};
+
+const fetchDashboard = async (): Promise<DashboardPayload> => {
+  const res = await fetch('/api/dashboard', { method: 'GET' });
+  if (!res.ok) throw new Error(`dashboard fetch failed: ${res.status}`);
+  return (await res.json()) as DashboardPayload;
+};
+
+const postJson = async (path: string, body: unknown) => {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+  return (await res.json()) as unknown;
+};
+
+const vote = async (caseId: string, vote: 'approve' | 'remove' | 'abstain') => {
+  try {
+    const result = (await postJson('/api/jury/vote', { caseId, vote })) as { ok: boolean; duplicate?: boolean; resolved?: boolean };
+    if (result.duplicate) showToast('Already voted on this case.');
+    else showToast(result.resolved ? 'Vote recorded — case resolved.' : 'Vote recorded.');
+    await refresh();
+  } catch (err) {
+    console.error(err);
+    showToast('Vote failed. Check logs.');
+  }
+};
+
+const modalBack = byId<HTMLDivElement>('handoverModalBack');
+const openHandoverModal = () => {
+  modalBack.classList.add('open');
+  modalBack.setAttribute('aria-hidden', 'false');
+};
+const closeHandoverModal = () => {
+  modalBack.classList.remove('open');
+  modalBack.setAttribute('aria-hidden', 'true');
+};
+
+const juryModalBack = byId<HTMLDivElement>('juryModalBack');
+const openJuryModal = () => {
+  juryModalBack.classList.add('open');
+  juryModalBack.setAttribute('aria-hidden', 'false');
+};
+const closeJuryModal = () => {
+  juryModalBack.classList.remove('open');
+  juryModalBack.setAttribute('aria-hidden', 'true');
+};
+
+const handoverHistoryModalBack = byId<HTMLDivElement>('handoverHistoryModalBack');
+const openHandoverHistoryModal = () => {
+  handoverHistoryModalBack.classList.add('open');
+  handoverHistoryModalBack.setAttribute('aria-hidden', 'false');
+};
+const closeHandoverHistoryModal = () => {
+  handoverHistoryModalBack.classList.remove('open');
+  handoverHistoryModalBack.setAttribute('aria-hidden', 'true');
+};
+
+const wireModal = () => {
+  byId<HTMLButtonElement>('handoverOpenBtn').addEventListener('click', () => openHandoverModal());
+  byId<HTMLButtonElement>('handoverCloseBtn').addEventListener('click', () => closeHandoverModal());
+  byId<HTMLButtonElement>('handoverCancelBtn').addEventListener('click', () => closeHandoverModal());
+  modalBack.addEventListener('click', (e) => {
+    if (e.target === modalBack) closeHandoverModal();
+  });
+
+  const form = byId<HTMLFormElement>('handoverForm');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const payload = {
+      activeSituations: String(fd.get('activeSituations') ?? ''),
+      usersToWatch: String(fd.get('usersToWatch') ?? ''),
+      priorityPosts: String(fd.get('priorityPosts') ?? ''),
+      notes: String(fd.get('notes') ?? ''),
+    };
+
+    try {
+      await postJson('/api/handover', payload);
+      showToast('Handover saved.');
+      form.reset();
+      closeHandoverModal();
+      await refresh();
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to save handover. Check logs.');
+    }
+  });
+};
+
+const renderHandoverTimeline = (payload: DashboardPayload) => {
+  const body = byId<HTMLDivElement>('handoverHistoryBody');
+  const items = payload.handover.history;
+
+  if (!items.length) {
+    body.innerHTML = `<div class="skeleton">No handovers yet for this subreddit.</div>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="timeline">
+      ${items
+        .slice(0, 5)
+        .map((card) => {
+          const summary = [
+            card.activeSituations ? `Active: ${card.activeSituations}` : '',
+            card.usersToWatch ? `Watch: ${card.usersToWatch}` : '',
+            card.priorityPosts ? `Priority: ${card.priorityPosts}` : '',
+            card.notes ? `Notes: ${card.notes}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          const compact = summary.length > 260 ? `${summary.slice(0, 260)}…` : summary || 'No details.';
+          return `
+          <div class="tlItem">
+            <div class="tlTop">
+              <div class="tlTitle">${escapeHtml(card.author)}</div>
+              <div class="tlTime">${escapeHtml(fmtTime(card.timestamp))}</div>
+            </div>
+            <div class="tlSummary">${escapeHtml(compact)}</div>
+          </div>
+        `;
+        })
+        .join('')}
+    </div>
+  `;
+};
+
+const wireTopActions = () => {
+  byId<HTMLButtonElement>('refreshBtn').addEventListener('click', async () => {
+    showToast('Refreshing…');
+    await refresh();
+  });
+
+  byId<HTMLButtonElement>('handoverViewBtn').addEventListener('click', async () => {
+    // Keep it simple/reliable in playtest: just scroll to the panel.
+    byId<HTMLElement>('handoverCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  byId<HTMLButtonElement>('handoverHistoryBtn').addEventListener('click', async () => {
+    if (lastPayload) {
+      renderHandoverTimeline(lastPayload);
+      openHandoverHistoryModal();
+    } else {
+      showToast('Loading… try again in a moment.');
+    }
+  });
+};
+
+let lastPayload: DashboardPayload | null = null;
+
+const refresh = async () => {
+  const payload = await fetchDashboard();
+  lastPayload = payload;
+
+  renderStatus(payload);
+  renderMeta(payload);
+  renderHeroMetrics(payload);
+  renderHandover(payload);
+  renderJury(payload);
+  renderHealth(payload);
+};
+
+const wireJuryModal = () => {
+  byId<HTMLButtonElement>('juryCreateBtn').addEventListener('click', () => openJuryModal());
+  byId<HTMLButtonElement>('juryCloseBtn').addEventListener('click', () => closeJuryModal());
+  byId<HTMLButtonElement>('juryCancelBtn').addEventListener('click', () => closeJuryModal());
+  juryModalBack.addEventListener('click', (e) => {
+    if (e.target === juryModalBack) closeJuryModal();
+  });
+
+  const form = byId<HTMLFormElement>('juryForm');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const payload = {
+      postId: String(fd.get('postId') ?? '').trim(),
+      reason: String(fd.get('reason') ?? '').trim(),
+      ruleCitation: String(fd.get('ruleCitation') ?? '').trim(),
+      contextNotes: String(fd.get('contextNotes') ?? '').trim(),
+      priority: String(fd.get('priority') ?? 'medium'),
+    };
+
+    try {
+      const result = (await postJson('/api/jury/case', payload)) as { ok: boolean; id?: string; error?: string };
+      if (!result.ok) {
+        showToast(result.error ?? 'Failed to create case.');
+        return;
+      }
+      showToast('Jury case created.');
+      form.reset();
+      closeJuryModal();
+      await refresh();
+      byId<HTMLElement>('juryCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to create case. Check logs.');
+    }
+  });
+};
+
+const wireHistoryModal = () => {
+  byId<HTMLButtonElement>('handoverHistoryCloseBtn').addEventListener('click', () => closeHandoverHistoryModal());
+  byId<HTMLButtonElement>('handoverHistoryDoneBtn').addEventListener('click', () => closeHandoverHistoryModal());
+  handoverHistoryModalBack.addEventListener('click', (e) => {
+    if (e.target === handoverHistoryModalBack) closeHandoverHistoryModal();
+  });
+};
+
+const boot = async () => {
+  wireModal();
+  wireTopActions();
+  wireJuryModal();
+  wireHistoryModal();
+
+  try {
+    await refresh();
+    // Small "live" feel for judging demos: refresh periodically, but keep it light.
+    window.setInterval(async () => {
+      try {
+        await refresh();
+      } catch {
+        // ignore background refresh failures
+      }
+    }, 15000);
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to load dashboard. Check server logs.');
+  }
+};
+
+void boot();
+

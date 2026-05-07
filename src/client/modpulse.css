@@ -1,0 +1,761 @@
+/* ModPulse dashboard styling.
+ *
+ * Architecture note: keep CSS self-contained (no external fonts/libs) so the
+ * webview remains lightweight and reliable in Reddit playtest.
+ */
+
+:root {
+  --bg0: #070a12;
+  --bg1: #0b1020;
+  --card: rgba(16, 22, 45, 0.78);
+  --card2: rgba(16, 22, 45, 0.62);
+  --stroke: rgba(255, 255, 255, 0.08);
+  --stroke2: rgba(255, 255, 255, 0.12);
+  --text: rgba(255, 255, 255, 0.92);
+  --muted: rgba(255, 255, 255, 0.64);
+  --muted2: rgba(255, 255, 255, 0.44);
+  --good: #43f3c5;
+  --warn: #ffcc66;
+  --bad: #ff5c7a;
+  --brand: #7c5cff;
+  --brand2: #2dd4ff;
+  --shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  --shadow2: 0 10px 32px rgba(0, 0, 0, 0.4);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: radial-gradient(1200px 800px at 20% -10%, rgba(124, 92, 255, 0.25), transparent 55%),
+    radial-gradient(900px 700px at 90% 10%, rgba(45, 212, 255, 0.15), transparent 50%),
+    radial-gradient(900px 700px at 50% 100%, rgba(67, 243, 197, 0.09), transparent 45%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.app {
+  padding: 18px;
+}
+
+.topbar {
+  display: grid;
+  grid-template-columns: 1.2fr 1.3fr 0.8fr;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.95), rgba(45, 212, 255, 0.75));
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  box-shadow: 0 16px 40px rgba(124, 92, 255, 0.25);
+}
+
+.brandText {
+  min-width: 0;
+}
+
+.brandTitle {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.1;
+}
+
+.brandSub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.topActions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.dividerV {
+  width: 1px;
+  height: 18px;
+  background: var(--stroke);
+}
+
+.metaPill {
+  font-size: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  grid-auto-rows: min-content;
+  gap: 14px;
+}
+
+.card {
+  border-radius: var(--radius);
+  border: 1px solid var(--stroke);
+  background: linear-gradient(180deg, var(--card), var(--card2));
+  box-shadow: var(--shadow2);
+  overflow: hidden;
+}
+
+.cardHeader {
+  padding: 14px 14px 10px 14px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.cardTitle {
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.cardSub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  max-width: 560px;
+}
+
+.cardFooter {
+  padding: 12px 14px;
+  border-top: 1px solid var(--stroke);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.chip {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chipSoft {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.chipGood {
+  border-color: rgba(67, 243, 197, 0.3);
+  color: rgba(67, 243, 197, 0.95);
+  background: rgba(67, 243, 197, 0.08);
+}
+
+.chipWarn {
+  border-color: rgba(255, 204, 102, 0.3);
+  color: rgba(255, 204, 102, 0.95);
+  background: rgba(255, 204, 102, 0.07);
+}
+
+.chipBad {
+  border-color: rgba(255, 92, 122, 0.35);
+  color: rgba(255, 92, 122, 0.95);
+  background: rgba(255, 92, 122, 0.07);
+}
+
+.heroCard {
+  grid-column: 1 / -1;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 12px;
+  padding: 16px;
+  position: relative;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(700px 420px at 22% 0%, rgba(124, 92, 255, 0.16), transparent 60%),
+    radial-gradient(650px 420px at 95% 30%, rgba(45, 212, 255, 0.08), transparent 55%);
+  pointer-events: none;
+}
+
+.heroLeft,
+.heroRight {
+  position: relative;
+  z-index: 1;
+}
+
+.heroKicker {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted2);
+}
+
+.heroTitle {
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-top: 10px;
+}
+
+.heroBody {
+  color: var(--muted);
+  margin-top: 10px;
+  font-size: 13px;
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.metric {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.metricLabel {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.metricValue {
+  font-size: 18px;
+  font-weight: 900;
+  margin-top: 6px;
+}
+
+.sparkWrap {
+  margin-top: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sparkTitle {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.spark {
+  height: 34px;
+  margin-top: 8px;
+  border-radius: 10px;
+  background: linear-gradient(
+    90deg,
+    rgba(67, 243, 197, 0.0),
+    rgba(67, 243, 197, 0.22),
+    rgba(124, 92, 255, 0.2),
+    rgba(45, 212, 255, 0.22),
+    rgba(67, 243, 197, 0.0)
+  );
+  background-size: 220% 100%;
+  animation: spark 2.8s ease-in-out infinite;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+@keyframes spark {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.btn {
+  border: 1px solid var(--stroke2);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.btn:active {
+  transform: translateY(0px);
+}
+
+.btnPrimary {
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.95), rgba(45, 212, 255, 0.65));
+  border-color: rgba(124, 92, 255, 0.32);
+  box-shadow: 0 16px 40px rgba(124, 92, 255, 0.22);
+}
+
+.btnSoft {
+  border-color: rgba(67, 243, 197, 0.24);
+  background: rgba(67, 243, 197, 0.08);
+}
+
+.btnGhost {
+  background: transparent;
+}
+
+.iconBtn {
+  border: 1px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.skeleton {
+  padding: 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.handoverBody {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.kvGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.kv {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.kvLabel {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.kvValue {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.86);
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+.juryList {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.case {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.caseTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.caseTitle {
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.caseMeta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.caseTags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.voteRow {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.voteCounts {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.btnGroup {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.healthGrid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stat {
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.statValue {
+  margin-top: 8px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.toast {
+  position: fixed;
+  left: 18px;
+  bottom: 18px;
+  max-width: min(560px, calc(100vw - 36px));
+  background: rgba(12, 16, 34, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0px);
+}
+
+.modalBack {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.modalBack.open {
+  display: flex;
+}
+
+.modal {
+  width: min(760px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(16, 22, 45, 0.92), rgba(12, 16, 34, 0.92));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.modalHeader {
+  padding: 14px 14px 10px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.modalTitle {
+  font-weight: 900;
+}
+
+.modalSub {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.modalForm {
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.fieldLabel {
+  font-size: 11px;
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fieldInput {
+  margin-top: 8px;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 10px 12px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.fieldInput::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.fieldInput:focus {
+  outline: none;
+  border-color: rgba(45, 212, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(45, 212, 255, 0.12);
+}
+
+.aiPanel {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.aiTitleRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.aiTitle {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.aiBody {
+  margin-top: 10px;
+  display: none;
+  gap: 10px;
+}
+
+.aiPanel.open .aiBody {
+  display: grid;
+}
+
+.aiLine {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.45;
+}
+
+.aiList {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.progress {
+  margin-top: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.progressFill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, rgba(67, 243, 197, 0.7), rgba(124, 92, 255, 0.7));
+  transition: width 220ms ease;
+}
+
+.pulseDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(67, 243, 197, 0.9);
+  box-shadow: 0 0 0 0 rgba(67, 243, 197, 0.38);
+  animation: pulse 1.6s ease-out infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(67, 243, 197, 0.38);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(67, 243, 197, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(67, 243, 197, 0);
+  }
+}
+
+.timeline {
+  display: grid;
+  gap: 10px;
+}
+
+.tlItem {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tlTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.tlTitle {
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.tlTime {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.64);
+}
+
+.tlSummary {
+  margin-top: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.modalActions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+  .statusRow {
+    justify-content: flex-start;
+  }
+  .topActions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+  .hero {
+    grid-template-columns: 1fr;
+  }
+  .healthGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
