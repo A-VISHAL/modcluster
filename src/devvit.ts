@@ -7,68 +7,43 @@
 
 import { Devvit } from '@devvit/public-api';
 
+console.log('[ModPulse] Devvit registration module loaded');
+
 Devvit.configure({
   redditAPI: true,
   redis: true,
 });
 
+Devvit.addMenuItem({
+  label: 'ModPulse Debug Ping',
+  description: 'Confirms the Devvit registration layer is active.',
+  location: 'post',
+  forUserType: 'moderator',
+  onPress: (_event, context) => {
+    console.log('[ModPulse] debug menu item pressed');
+    context.ui.showToast('ModPulse menu working');
+  },
+});
+
 /**
  * Minimal custom post dashboard.
  *
- * The renderer uses only stable Devvit Blocks primitives so render errors do
- * not prevent the custom post from appearing or opening during playtest.
+ * The renderer intentionally uses only vstack and text while debugging custom
+ * post visibility. This rules out unsupported Blocks props as the failure mode.
  */
 Devvit.addCustomPostType({
   name: 'ModPulse',
-  description: 'Visible ModPulse AI playtest dashboard.',
-  height: 'regular',
-  render: (context) =>
-    Devvit.createElement(
+  render: () => {
+    console.log('[ModPulse] custom post render executed');
+
+    return Devvit.createElement(
       'vstack',
-      {
-        width: '100%',
-        height: '100%',
-        padding: 'medium',
-        gap: 'medium',
-        alignment: 'middle center',
-      },
-      Devvit.createElement(
-        'text',
-        {
-          size: 'xxlarge',
-          weight: 'bold',
-          alignment: 'center',
-          wrap: true,
-        },
-        'ModPulse AI'
-      ),
-      Devvit.createElement(
-        'hstack',
-        {
-          width: '100%',
-          gap: 'small',
-          alignment: 'middle center',
-        },
-        Devvit.createElement(
-          'text',
-          {
-            size: 'medium',
-            alignment: 'center',
-            wrap: true,
-          },
-          'Shift Handover System Active'
-        )
-      ),
-      Devvit.createElement(
-        'button',
-        {
-          onPress: () => {
-            context.ui.showToast('ModPulse working');
-          },
-        },
-        'Test ModPulse'
-      )
-    ),
+      undefined,
+      Devvit.createElement('text', undefined, 'ModPulse Working')
+    );
+  },
 });
+
+console.log('[ModPulse] custom post type registered');
 
 export default Devvit;

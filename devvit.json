@@ -1,6 +1,15 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "modcluster",
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "modpulse.html",
+        "height": "tall"
+      }
+    }
+  },
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
@@ -23,6 +32,13 @@
         "location": "post",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/mop-post"
+      },
+      {
+        "label": "Create ModPulse Post",
+        "description": "Creates a ModPulse custom post (Devvit Web) in this subreddit.",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/modpulse-create"
       }
     ]
   },
@@ -40,7 +56,11 @@
     "dev": "vite build --watch"
   },
   "permissions": {
-    "reddit": true
+    "reddit": {
+      "enable": true,
+      "asUser": ["SUBMIT_POST"]
+    },
+    "redis": true
   },
   "dev": {
     "subreddit": "modcluster_dev"

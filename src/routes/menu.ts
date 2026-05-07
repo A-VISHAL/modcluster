@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { MenuItemRequest, UiResponse } from '@devvit/web/shared';
 import type { FormField } from '@devvit/shared-types/shared/form.js';
-import { context } from '@devvit/web/server';
+import { context, reddit } from '@devvit/web/server';
 import { fetchActiveHandover, fetchHandoverHistory } from '../core/handover';
 
 export const menu = new Hono();
@@ -143,4 +143,30 @@ menu.post('/handover-view', async (c) => {
     },
     200
   );
+});
+
+menu.post('/modpulse-create', async (c) => {
+  await c.req.json<MenuItemRequest>();
+
+  try {
+    const created = await reddit.submitCustomPost({
+      title: `ModPulse (${new Date().toLocaleString()})`,
+      entry: 'default',
+    });
+
+    return c.json<UiResponse>(
+      {
+        showToast: `Created ModPulse post: ${created.id}`,
+      },
+      200
+    );
+  } catch (err) {
+    console.error('Failed to create ModPulse custom post', err);
+    return c.json<UiResponse>(
+      {
+        showToast: 'Failed to create ModPulse post. Check logs for details.',
+      },
+      200
+    );
+  }
 });
