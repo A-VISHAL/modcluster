@@ -5,8 +5,19 @@
  * add moderator notes, and manage post state.
  */
 
-import { reddit, context } from '@devvit/web/server';
+import { reddit } from '@devvit/web/server';
 import { logActivity, type ActivityTone } from './activity';
+
+/**
+ * Ensure postId is in the correct fullname format (t3_xxx).
+ * Devvit requires posts to be fetched using fullname format.
+ */
+function ensurePostFullname(postId: string): `t3_${string}` {
+  if (postId.startsWith('t3_')) {
+    return postId as `t3_${string}`;
+  }
+  return `t3_${postId}` as `t3_${string}`;
+}
 
 export type ModerationActionType = 'remove' | 'approve' | 'immediate';
 
@@ -34,18 +45,32 @@ async function addRedditModeratorNote(
   subredditId: string
 ): Promise<boolean> {
   try {
-    const post = await reddit.getPostById(postId);
+    console.log('[ModPulse][moderation] [MOD_NOTE] Fetching post for note addition', {
+      postId,
+      noteLength: note.length,
+      subredditId,
+    });
+
+    const fullname = ensurePostFullname(postId);
+    const post = await reddit.getPostById(fullname);
     if (!post) {
-      console.warn('[ModPulse][moderation] Post not found for note', {
+      console.warn('[ModPulse][moderation] [MOD_NOTE] Post not found for note', {
         postId,
+        fullname,
         subredditId,
       });
       return false;
     }
 
+    console.log('[ModPulse][moderation] [MOD_NOTE] Post fetched, adding note', {
+      postId,
+      subredditName: post.subredditName,
+      notePreview: note.substring(0, 80),
+    });
+
     // Devvit note API - adds to mod history
     // Note: Devvit may not expose addModNote directly, so we document intent
-    console.log('[ModPulse][moderation] moderator note intent', {
+    console.log('[ModPulse][moderation] [MOD_NOTE] Moderator note intent recorded', {
       postId,
       subredditName: post.subredditName,
       note: note.substring(0, 100),
@@ -53,9 +78,10 @@ async function addRedditModeratorNote(
 
     return true;
   } catch (error) {
-    console.error('[ModPulse][moderation] Failed to add mod note', {
+    console.error('[ModPulse][moderation] [MOD_NOTE ✗] Failed to add mod note', {
       postId,
-      error,
+      errorMessage: String(error),
+      stackTrace: error instanceof Error ? error.stack : 'No stack trace',
     });
     return false;
   }
@@ -66,61 +92,178 @@ async function addRedditModeratorNote(
  */
 async function removePost(postId: string, subredditId: string): Promise<boolean> {
   try {
-    console.log('[ModPulse][moderation] Attempting post removal', {
+    console.log('[ModPulse][moderation] ========== REMOVAL PHASE: INIT ==========', {
+      postId,
+      subredditId,
+      timestamp: Date.now(),
+    });
+
+    // PHASE 1: Fetch post from Reddit API
+    console.log('[ModPulse][moderation] [PHASE 1] Fetching post from Reddit API', {
       postId,
       subredditId,
     });
 
-    const post = await reddit.getPostById(postId);
-    if (!post) {
-      console.warn('[ModPulse][moderation] Post not found for removal', {
+    const fullname = ensurePostFullname(postId);
+    console.log('[ModPulse][moderation] [PHASE 1] Post fullname prepared', {
+      originalId: postId,
+      fullname,
+    });
+
+    let post;
+    try {
+      post = await reddit.getPostById(fullname);
+      console.log('[ModPulse][moderation] [PHASE 1 ✓] Post fetch successful', {
         postId,
+        postExists: !!post,
+        postTitle: post?.title?.substring(0, 50),
+        postAuthor: post?.authorName,
+      });
+    } catch (fetchError) {
+      const stackTrace = fetchError instanceof Error ? fetchError.stack : 'No stack trace';
+      console.error('[ModPulse][moderation] [PHASE 1 ✗] Post fetch FAILED', {
+        postId,
+        fullname,
+        subredditId,
+        errorType: fetchError instanceof Error ? fetchError.constructor.name : typeof fetchError,
+        errorMessage: String(fetchError),
+        stackTrace,
+      });
+      throw new Error(`Post fetch failed: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`);
+    }
+
+    if (!post) {
+      console.warn('[ModPulse][moderation] [PHASE 1 ✗] Post not found (null response)', {
+        postId,
+        fullname,
         subredditId,
       });
       return false;
     }
 
-    // Verify we're removing from the correct subreddit
+    // PHASE 2: Validate subreddit scope
+    console.log('[ModPulse][moderation] [PHASE 2] Validating subreddit scope', {
+      postSubreddit: post.subredditName,
+      expectedSubreddit: subredditId,
+      match: post.subredditName.toLowerCase() === subredditId.toLowerCase(),
+    });
+
     if (post.subredditName.toLowerCase() !== subredditId.toLowerCase()) {
       throw new Error(
         `Subreddit mismatch: post is from r/${post.subredditName}, expected r/${subredditId}`
       );
     }
 
-    // Check moderator permissions
-    const user = await reddit.getCurrentUser();
-    if (!user) {
-      throw new Error('Unable to verify current user');
+    console.log('[ModPulse][moderation] [PHASE 2 ✓] Subreddit scope validated', {
+      subredditName: post.subredditName,
+    });
+
+    // PHASE 3: Check moderator permissions
+    console.log('[ModPulse][moderation] [PHASE 3] Checking moderator permissions', {
+      subredditName: post.subredditName,
+    });
+
+    let user;
+    try {
+      user = await reddit.getCurrentUser();
+      console.log('[ModPulse][moderation] [PHASE 3 ✓] Current user fetched', {
+        username: user?.username,
+        userExists: !!user,
+      });
+    } catch (userError) {
+      console.error('[ModPulse][moderation] [PHASE 3 ✗] User fetch FAILED', {
+        errorMessage: String(userError),
+        stackTrace: userError instanceof Error ? userError.stack : 'No stack trace',
+      });
+      throw new Error(`Unable to verify current user: ${String(userError)}`);
     }
 
-    const modPermissions = await user.getModPermissionsForSubreddit(
-      post.subredditName
-    );
+    if (!user) {
+      throw new Error('Current user is null');
+    }
+
+    let modPermissions: string[] = [];
+    try {
+      modPermissions = await user.getModPermissionsForSubreddit(post.subredditName);
+      console.log('[ModPulse][moderation] [PHASE 3 ✓] Mod permissions retrieved', {
+        username: user.username,
+        subredditName: post.subredditName,
+        permissions: modPermissions,
+      });
+    } catch (permError) {
+      console.error('[ModPulse][moderation] [PHASE 3 ✗] Permission check FAILED', {
+        username: user.username,
+        subredditName: post.subredditName,
+        errorMessage: String(permError),
+        stackTrace: permError instanceof Error ? permError.stack : 'No stack trace',
+      });
+      throw new Error(`Permission check failed: ${String(permError)}`);
+    }
+
     const canManagePosts =
       modPermissions.includes('all') || modPermissions.includes('posts');
 
     if (!canManagePosts) {
+      console.error('[ModPulse][moderation] [PHASE 3 ✗] Insufficient permissions', {
+        username: user.username,
+        subredditName: post.subredditName,
+        permissions: modPermissions,
+        required: 'all or posts',
+      });
       throw new Error(
-        `User ${user.username} lacks posts permission in r/${post.subredditName}`
+        `User ${user.username} lacks posts permission in r/${post.subredditName}. Has: ${modPermissions.join(', ')}`
       );
     }
 
-    // Execute removal
-    if (!post.removed) {
-      await post.remove();
+    // PHASE 4: Execute removal
+    console.log('[ModPulse][moderation] [PHASE 4] Executing post removal', {
+      postId,
+      subredditName: post.subredditName,
+      postCurrentlyRemoved: post.removed,
+    });
+
+    if (post.removed) {
+      console.log('[ModPulse][moderation] [PHASE 4] Post already removed, skipping', {
+        postId,
+      });
+    } else {
+      try {
+        await post.remove();
+        console.log('[ModPulse][moderation] [PHASE 4 ✓] Post removal API call succeeded', {
+          postId,
+          subredditName: post.subredditName,
+        });
+      } catch (removeError) {
+        const stackTrace = removeError instanceof Error ? removeError.stack : 'No stack trace';
+        console.error('[ModPulse][moderation] [PHASE 4 ✗] Post removal API FAILED', {
+          postId,
+          subredditName: post.subredditName,
+          errorType: removeError instanceof Error ? removeError.constructor.name : typeof removeError,
+          errorMessage: String(removeError),
+          stackTrace,
+          redditErrorResponse: (removeError as any)?.response?.data || 'No API response',
+        });
+        throw new Error(`post.remove() failed: ${removeError instanceof Error ? removeError.message : String(removeError)}`);
+      }
     }
 
-    console.log('[ModPulse][moderation] Post removed successfully', {
+    console.log('[ModPulse][moderation] ========== REMOVAL PHASE: SUCCESS ==========', {
       postId,
       subredditName: post.subredditName,
       author: post.authorName,
+      timestamp: Date.now(),
     });
 
     return true;
   } catch (error) {
-    console.error('[ModPulse][moderation] Post removal failed', {
+    const stackTrace = error instanceof Error ? error.stack : 'No stack trace';
+    console.error('[ModPulse][moderation] ========== REMOVAL PHASE: FAILURE ==========', {
       postId,
-      error,
+      subredditId,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      stackTrace,
+      timestamp: Date.now(),
     });
     return false;
   }
@@ -131,15 +274,17 @@ async function removePost(postId: string, subredditId: string): Promise<boolean>
  */
 async function lockPost(postId: string, subredditId: string): Promise<boolean> {
   try {
-    console.log('[ModPulse][moderation] Attempting post lock', {
+    console.log('[ModPulse][moderation] [LOCK] Attempting post lock', {
       postId,
       subredditId,
     });
 
-    const post = await reddit.getPostById(postId);
+    const fullname = ensurePostFullname(postId);
+    const post = await reddit.getPostById(fullname);
     if (!post) {
-      console.warn('[ModPulse][moderation] Post not found for lock', {
+      console.warn('[ModPulse][moderation] [LOCK] Post not found for lock', {
         postId,
+        fullname,
         subredditId,
       });
       return false;
@@ -172,19 +317,36 @@ async function lockPost(postId: string, subredditId: string): Promise<boolean> {
 
     // Execute lock
     if (!post.locked) {
-      await post.lock();
+      console.log('[ModPulse][moderation] [LOCK] Calling post.lock() API', {
+        postId,
+        subredditName: post.subredditName,
+      });
+      try {
+        await post.lock();
+        console.log('[ModPulse][moderation] [LOCK ✓] Post locked successfully', {
+          postId,
+          subredditName: post.subredditName,
+        });
+      } catch (lockError) {
+        console.error('[ModPulse][moderation] [LOCK ✗] post.lock() API failed', {
+          postId,
+          errorMessage: String(lockError),
+          stackTrace: lockError instanceof Error ? lockError.stack : 'No stack trace',
+        });
+        throw lockError;
+      }
+    } else {
+      console.log('[ModPulse][moderation] [LOCK] Post already locked, skipping', {
+        postId,
+      });
     }
-
-    console.log('[ModPulse][moderation] Post locked successfully', {
-      postId,
-      subredditName: post.subredditName,
-    });
 
     return true;
   } catch (error) {
-    console.error('[ModPulse][moderation] Post lock failed', {
+    console.error('[ModPulse][moderation] [LOCK ✗] Post lock failed', {
       postId,
-      error,
+      errorMessage: String(error),
+      stackTrace: error instanceof Error ? error.stack : 'No stack trace',
     });
     return false;
   }
@@ -193,6 +355,10 @@ async function lockPost(postId: string, subredditId: string): Promise<boolean> {
 /**
  * Execute a REMOVE verdict from jury consensus.
  * This is triggered when 2+ moderators vote REMOVE.
+ *
+ * @param displayModerator - The moderator shown in activity feed (could be simulated in dev mode)
+ * @param executingModerator - The real authenticated moderator executing the action
+ * @param devMode - Whether this is a simulated dev mode execution
  */
 export async function executeRemovalVerdict(input: {
   postId: string;
@@ -200,24 +366,55 @@ export async function executeRemovalVerdict(input: {
   caseId: string;
   reason: string;
   ruleCitation: string;
-  executedBy: string;
+  displayModerator: string;
+  executingModerator: string;
+  devMode?: boolean;
 }): Promise<ModerationOutcome> {
   const now = Date.now();
 
   try {
-    console.log('[ModPulse][moderation] REMOVE verdict execution started', {
+    console.log('[ModPulse][moderation] ========== VERDICT EXECUTION: REMOVE ==========', {
+      caseId: input.caseId,
       postId: input.postId,
       subredditId: input.subredditId,
-      caseId: input.caseId,
-      executedBy: input.executedBy,
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
+      devMode: input.devMode,
       reason: input.reason,
+      ruleCitation: input.ruleCitation,
+      timestamp: now,
     });
 
-    // Execute removal
+    console.log('[ModPulse][moderation] [PHASE 0] Verdict execution context validation', {
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
+      isSimulatedExecution: input.displayModerator !== input.executingModerator,
+      devMode: input.devMode,
+    });
+
+    console.log('[ModPulse][moderation] [REMOVE_VERDICT] Calling removePost()', {
+      postId: input.postId,
+      subredditId: input.subredditId,
+      executingModerator: input.executingModerator,
+    });
+
+    // Execute removal using the real authenticated moderator context
     const removed = await removePost(input.postId, input.subredditId);
+    
     if (!removed) {
+      console.error('[ModPulse][moderation] [REMOVE_VERDICT ✗] removePost() returned false', {
+        postId: input.postId,
+        subredditId: input.subredditId,
+        executingModerator: input.executingModerator,
+      });
       throw new Error('Failed to remove post from Reddit');
     }
+
+    console.log('[ModPulse][moderation] [REMOVE_VERDICT ✓] Post removal succeeded', {
+      postId: input.postId,
+      subredditId: input.subredditId,
+      executingModerator: input.executingModerator,
+    });
 
     // Add moderator note
     const noteText =
@@ -225,7 +422,12 @@ export async function executeRemovalVerdict(input: {
       `Rule: ${input.ruleCitation}\n` +
       `Reason: ${input.reason}\n` +
       `Case: ${input.caseId}\n` +
-      `Executed by system on behalf of jury consensus`;
+      `Executed by jury consensus • Display: ${input.displayModerator} • Executor: ${input.executingModerator}`;
+
+    console.log('[ModPulse][moderation] [REMOVE_VERDICT] Adding moderator note', {
+      postId: input.postId,
+      notePreview: noteText.substring(0, 80),
+    });
 
     const noteAdded = await addRedditModeratorNote(
       input.postId,
@@ -233,22 +435,30 @@ export async function executeRemovalVerdict(input: {
       input.subredditId
     );
 
-    // Log activity
+    console.log('[ModPulse][moderation] [REMOVE_VERDICT] Moderator note result', {
+      noteAdded,
+    });
+
+    // Log activity - show display moderator for UI, but note executor
     await logActivity({
       subredditId: input.subredditId,
       action: 'Removal executed',
-      moderator: input.executedBy,
+      moderator: input.displayModerator,
       tone: 'bad',
-      detail: `${input.postId} • ${input.reason}`,
+      detail: `${input.postId} • ${input.reason}${input.displayModerator !== input.executingModerator ? ` • Executor: ${input.executingModerator}` : ''}`,
       timestamp: now,
     });
 
-    console.log('[ModPulse][moderation] REMOVE verdict execution completed', {
+    console.log('[ModPulse][moderation] ========== VERDICT EXECUTION: REMOVE ✓ SUCCESS ==========', {
       postId: input.postId,
       subredditId: input.subredditId,
       caseId: input.caseId,
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
       removed: true,
       noteAdded,
+      devMode: input.devMode,
+      timestamp: Date.now(),
     });
 
     return {
@@ -265,18 +475,25 @@ export async function executeRemovalVerdict(input: {
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    const stackTrace = error instanceof Error ? error.stack : 'No stack trace';
 
-    console.error('[ModPulse][moderation] REMOVE verdict execution failed', {
+    console.error('[ModPulse][moderation] ========== VERDICT EXECUTION: REMOVE ✗ FAILED ==========', {
       postId: input.postId,
       subredditId: input.subredditId,
       caseId: input.caseId,
-      error: errorMessage,
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
+      devMode: input.devMode,
+      errorType: error instanceof Error ? error.constructor.name : typeof error,
+      errorMessage,
+      stackTrace,
+      timestamp: Date.now(),
     });
 
     await logActivity({
       subredditId: input.subredditId,
       action: 'Removal failed',
-      moderator: input.executedBy,
+      moderator: input.displayModerator,
       tone: 'bad',
       detail: `${input.postId} • Error: ${errorMessage}`,
       timestamp: now,
@@ -298,38 +515,53 @@ export async function executeRemovalVerdict(input: {
 /**
  * Execute an APPROVE verdict from jury consensus.
  * This archives the case without modifying the post.
+ *
+ * @param displayModerator - The moderator shown in activity feed (could be simulated in dev mode)
+ * @param executingModerator - The real authenticated moderator executing the action
  */
 export async function executeApprovalVerdict(input: {
   postId: string;
   subredditId: string;
   caseId: string;
   reason: string;
-  executedBy: string;
+  displayModerator: string;
+  executingModerator: string;
 }): Promise<ModerationOutcome> {
   const now = Date.now();
 
   try {
-    console.log('[ModPulse][moderation] APPROVE verdict execution started', {
+    console.log('[ModPulse][moderation] ========== VERDICT EXECUTION: APPROVE ==========', {
       postId: input.postId,
       subredditId: input.subredditId,
       caseId: input.caseId,
-      executedBy: input.executedBy,
-    });
-
-    // Log activity
-    await logActivity({
-      subredditId: input.subredditId,
-      action: 'Post approved by jury',
-      moderator: input.executedBy,
-      tone: 'good',
-      detail: `${input.postId} • Post meets community standards`,
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
       timestamp: now,
     });
 
-    console.log('[ModPulse][moderation] APPROVE verdict execution completed', {
+    console.log('[ModPulse][moderation] [PHASE 0] Verdict execution context validation', {
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
+      isSimulatedExecution: input.displayModerator !== input.executingModerator,
+    });
+
+    // Log activity - show display moderator for UI
+    await logActivity({
+      subredditId: input.subredditId,
+      action: 'Post approved by jury',
+      moderator: input.displayModerator,
+      tone: 'good',
+      detail: `${input.postId} • Post meets community standards${input.displayModerator !== input.executingModerator ? ` • Executor: ${input.executingModerator}` : ''}`,
+      timestamp: now,
+    });
+
+    console.log('[ModPulse][moderation] ========== VERDICT EXECUTION: APPROVE ✓ SUCCESS ==========', {
       postId: input.postId,
       subredditId: input.subredditId,
       caseId: input.caseId,
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
+      timestamp: Date.now(),
     });
 
     return {
@@ -347,10 +579,12 @@ export async function executeApprovalVerdict(input: {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    console.error('[ModPulse][moderation] APPROVE verdict execution failed', {
+    console.error('[ModPulse][moderation] ========== VERDICT EXECUTION: APPROVE ✗ FAILED ==========', {
       postId: input.postId,
       subredditId: input.subredditId,
       caseId: input.caseId,
+      displayModerator: input.displayModerator,
+      executingModerator: input.executingModerator,
       error: errorMessage,
     });
 

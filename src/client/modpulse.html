@@ -30,9 +30,20 @@
           <div class="dividerV"></div>
           <div class="metaPill" id="metaPill">Loading…</div>
           <div class="dividerV"></div>
+          <div class="devModeToggle" id="devModeToggle" title="Enable developer test mode for simulated jury voting">
+            <input type="checkbox" id="devModeCheckbox" class="devModeInput" />
+            <label for="devModeCheckbox" class="devModeLabel">
+              <span class="devModeIcon">🛠</span>
+              <span class="devModeText">Dev</span>
+            </label>
+          </div>
+          <div class="dividerV"></div>
           <div class="securityBadge" title="All moderation actions are restricted to the active subreddit and transparently logged.">
             <span class="securityBadgeIcon">🔒</span>
             <span class="securityBadgeText">Scoped</span>
+          </div>
+          <div id="devModeIndicator" class="devModeIndicator" style="display: none;">
+            <span class="devModeIndicatorText">🛠 DEV MODE</span>
           </div>
         </div>
       </header>

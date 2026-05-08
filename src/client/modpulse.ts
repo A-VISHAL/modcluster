@@ -91,6 +91,45 @@ type DashboardPayload = {
   };
 };
 
+// ============================================================================
+// DEVELOPER TEST MODE
+// ============================================================================
+// Allows solo developers to simulate collaborative voting during testing.
+// Only enabled in dev/playtest environments.
+
+type DevModeState = {
+  enabled: boolean;
+  moderatorIndex: number;
+};
+
+const devModeState: DevModeState = {
+  enabled: false,
+  moderatorIndex: 0,
+};
+
+const devModeratorNames = ['TestMod_1', 'TestMod_2', 'TestMod_3'];
+
+const getNextDevModerator = (): string => {
+  const name = devModeratorNames[devModeState.moderatorIndex];
+  devModeState.moderatorIndex = (devModeState.moderatorIndex + 1) % devModeratorNames.length;
+  return name;
+};
+
+const enableDevMode = () => {
+  devModeState.enabled = true;
+  devModeState.moderatorIndex = 0;
+  const indicator = byId<HTMLDivElement>('devModeIndicator');
+  indicator.style.display = 'block';
+  console.log('[ModPulse Web] Developer Test Mode ENABLED');
+};
+
+const disableDevMode = () => {
+  devModeState.enabled = false;
+  const indicator = byId<HTMLDivElement>('devModeIndicator');
+  indicator.style.display = 'none';
+  console.log('[ModPulse Web] Developer Test Mode DISABLED');
+};
+
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const toastEl = byId<HTMLDivElement>('toast');
@@ -431,8 +470,21 @@ const postJson = async (path: string, body: unknown) => {
 
 const vote = async (caseId: string, vote: 'approve' | 'remove' | 'abstain') => {
   try {
-    console.log('[ModPulse Web] jury vote clicked', { caseId, vote });
-    const result = (await postJson('/api/jury/vote', { caseId, vote })) as { ok: boolean; duplicate?: boolean; resolved?: boolean };
+    console.log('[ModPulse Web] jury vote clicked', { caseId, vote, devMode: devModeState.enabled });
+
+    const payload: { caseId: string; vote: string; devMode?: boolean; simulatedModerator?: string } = {
+      caseId,
+      vote,
+    };
+
+    // If dev mode is enabled, generate simulated moderator and include flag
+    if (devModeState.enabled) {
+      payload.devMode = true;
+      payload.simulatedModerator = getNextDevModerator();
+      console.log('[ModPulse Web] Dev mode vote:', { moderator: payload.simulatedModerator });
+    }
+
+    const result = (await postJson('/api/jury/vote', payload)) as { ok: boolean; duplicate?: boolean; resolved?: boolean };
     if (result.duplicate) showToast('Already voted on this case.');
     else showToast(result.resolved ? 'Vote recorded — case resolved.' : 'Vote recorded.');
     await refresh();
@@ -569,6 +621,19 @@ const wireTopActions = () => {
       openHandoverHistoryModal();
     } else {
       showToast('Loading… try again in a moment.');
+    }
+  });
+
+  // Dev mode toggle
+  const devModeCheckbox = byId<HTMLInputElement>('devModeCheckbox');
+  devModeCheckbox.addEventListener('change', (e) => {
+    const isChecked = (e.target as HTMLInputElement).checked;
+    if (isChecked) {
+      enableDevMode();
+      showToast('🛠 Developer Test Mode enabled. Simulated votes bypass duplicate checks.');
+    } else {
+      disableDevMode();
+      showToast('Developer Test Mode disabled. Back to production behavior.');
     }
   });
 };

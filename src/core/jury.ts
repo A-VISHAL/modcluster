@@ -238,17 +238,27 @@ export function generateModerationSummary(juryCase: JuryCase): string {
 /**
  * Add a moderator vote, prevent duplicate voting, and resolve the case once
  * the collaborative threshold is reached.
+ *
+ * In dev mode, duplicate checks are bypassed to allow testing with simulated moderators.
+ *
+ * @param input.moderator - The moderator voting (could be simulated in dev mode for display)
+ * @param input.realModerator - The actual authenticated moderator for Reddit execution
+ * @param input.devMode - Whether this is a simulated test vote
  */
 export async function addVote(input: {
   caseId: string;
   moderator: string;
   vote: JuryVoteValue;
   timestamp?: number;
+  devMode?: boolean;
+  realModerator?: string;
 }): Promise<{ juryCase: JuryCase; duplicate: boolean; resolved: boolean }> {
   console.log('[ModPulse][jury] addVote start', {
     caseId: input.caseId,
-    moderator: input.moderator,
+    displayModerator: input.moderator,
+    realModerator: input.realModerator || input.moderator,
     vote: input.vote,
+    devMode: input.devMode,
   });
 
   const juryCase = await fetchJuryCase(input.caseId);
@@ -261,16 +271,19 @@ export async function addVote(input: {
     return { juryCase, duplicate: false, resolved: true };
   }
 
-  const hasExistingVote = juryCase.votes.some(
-    (vote) => vote.moderator === input.moderator
-  );
+  // Check for duplicate votes ONLY if not in dev mode
+  if (!input.devMode) {
+    const hasExistingVote = juryCase.votes.some(
+      (vote) => vote.moderator === input.moderator
+    );
 
-  if (hasExistingVote) {
-    console.log('[ModPulse][jury] duplicate vote blocked', {
-      caseId: input.caseId,
-      moderator: input.moderator,
-    });
-    return { juryCase, duplicate: true, resolved: false };
+    if (hasExistingVote) {
+      console.log('[ModPulse][jury] duplicate vote blocked', {
+        caseId: input.caseId,
+        moderator: input.moderator,
+      });
+      return { juryCase, duplicate: true, resolved: false };
+    }
   }
 
   const updatedCase: JuryCase = {
@@ -321,6 +334,8 @@ export async function addVote(input: {
       subredditId: updatedCase.subredditId,
       verdict,
       voteCounts: summarizeVoteCounts(updatedCase.votes),
+      displayModerator: input.moderator,
+      executingModerator: input.realModerator || input.moderator,
     });
 
     updatedCase.status = 'resolved';
@@ -337,11 +352,17 @@ export async function addVote(input: {
       timestamp: updatedCase.resolvedAt,
     });
 
+    // Use the real moderator for execution, not the displayed one
+    const executingModerator = input.realModerator || input.moderator;
+
     // EXECUTE VERDICT ON REDDIT
     if (verdict === 'remove') {
       console.log('[ModPulse][jury] executing REMOVE verdict on Reddit', {
         caseId: updatedCase.id,
         postId: updatedCase.postId,
+        displayModerator: input.moderator,
+        executingModerator,
+        devMode: input.devMode,
       });
 
       try {
@@ -351,7 +372,9 @@ export async function addVote(input: {
           caseId: updatedCase.id,
           reason: updatedCase.reason,
           ruleCitation: updatedCase.ruleCitation,
-          executedBy: input.moderator,
+          displayModerator: input.moderator,
+          executingModerator,
+          devMode: input.devMode ?? false,
         });
 
         if (outcome.success) {
@@ -360,7 +383,7 @@ export async function addVote(input: {
             action: 'Post removed per jury verdict',
             moderator: input.moderator,
             tone: 'bad',
-            detail: `${juryCase.postId} • Post is no longer visible on Reddit`,
+            detail: `${juryCase.postId} • Post is no longer visible on Reddit • Executed by ${executingModerator}`,
             timestamp: updatedCase.resolvedAt + 1,
           });
         } else {
@@ -383,6 +406,8 @@ export async function addVote(input: {
       console.log('[ModPulse][jury] executing APPROVE verdict', {
         caseId: updatedCase.id,
         postId: updatedCase.postId,
+        displayModerator: input.moderator,
+        executingModerator,
       });
 
       try {
@@ -391,7 +416,8 @@ export async function addVote(input: {
           subredditId: updatedCase.subredditId,
           caseId: updatedCase.id,
           reason: updatedCase.reason,
-          executedBy: input.moderator,
+          displayModerator: input.moderator,
+          executingModerator,
         });
 
         if (outcome.success) {

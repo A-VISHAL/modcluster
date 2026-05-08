@@ -161,6 +161,91 @@ body.modalOpen {
   text-transform: uppercase;
 }
 
+.devModeToggle {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.devModeInput {
+  display: none;
+}
+
+.devModeLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 204, 102, 0.2);
+  border-radius: 999px;
+  background: rgba(255, 204, 102, 0.04);
+  color: rgba(255, 204, 102, 0.6);
+  cursor: pointer;
+  transition: all 150ms ease;
+  user-select: none;
+}
+
+.devModeLabel:hover {
+  background: rgba(255, 204, 102, 0.08);
+  border-color: rgba(255, 204, 102, 0.4);
+  color: rgba(255, 204, 102, 0.8);
+}
+
+.devModeInput:checked + .devModeLabel {
+  background: rgba(255, 204, 102, 0.15);
+  border-color: rgba(255, 204, 102, 0.6);
+  color: rgba(255, 204, 102, 1);
+  box-shadow: 0 0 12px rgba(255, 204, 102, 0.2);
+}
+
+.devModeIcon {
+  font-size: 11px;
+  animation: devModeIconPulse 2s infinite;
+}
+
+.devModeInput:checked + .devModeLabel .devModeIcon {
+  animation: devModeIconPulse 0.6s infinite;
+}
+
+@keyframes devModeIconPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+.devModeText {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.devModeIndicator {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  font-size: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 204, 102, 0.25), rgba(255, 204, 102, 0.1));
+  border: 1px solid rgba(255, 204, 102, 0.5);
+  color: rgba(255, 204, 102, 1);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  box-shadow: 0 4px 16px rgba(255, 204, 102, 0.15);
+  animation: devModeIndicatorFade 0.4s ease-out;
+  z-index: 10000;
+}
+
+@keyframes devModeIndicatorFade {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr;

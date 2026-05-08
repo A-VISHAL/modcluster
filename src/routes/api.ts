@@ -424,13 +424,52 @@ api.post('/jury/vote', async (c) => {
   const input = await c.req.json<{
     caseId: string;
     vote: JuryVoteValue;
+    devMode?: boolean;
+    simulatedModerator?: string;
   }>();
+
+  // Check if dev mode is being requested
+  const isDevModeRequested = input.devMode === true;
+  const isDevelopmentEnvironment = process.env.NODE_ENV !== 'production';
+
+  let effectiveModeratorName = username;
+
+  // Dev mode handling: only allow in dev environments, use simulated moderator
+  if (isDevModeRequested) {
+    if (!isDevelopmentEnvironment) {
+      console.warn('[ModPulse][security] DEV MODE REJECTED - Production environment', {
+        subredditId,
+        attemptedBy: username,
+      });
+      return c.json(
+        { ok: false, error: 'Developer mode is not available in production.' },
+        403
+      );
+    }
+
+    if (!input.simulatedModerator) {
+      return c.json(
+        { ok: false, error: 'simulatedModerator is required when devMode is enabled.' },
+        400
+      );
+    }
+
+    effectiveModeratorName = input.simulatedModerator;
+    console.log('[ModPulse][dev] DEV MODE VOTE using simulated moderator', {
+      subredditId,
+      realModerator: username,
+      simulatedModerator: effectiveModeratorName,
+      caseId: input.caseId,
+      vote: input.vote,
+    });
+  }
 
   console.log('[ModPulse][security] vote request initiated', {
     subredditId,
-    username,
+    moderator: effectiveModeratorName,
     caseId: input.caseId,
     vote: input.vote,
+    devMode: isDevModeRequested,
     timestamp: auditContext.timestamp,
   });
 
@@ -440,7 +479,7 @@ api.post('/jury/vote', async (c) => {
     console.warn('[ModPulse][security] vote rejected - case missing', {
       caseId: input.caseId,
       subredditId,
-      moderator: username,
+      moderator: effectiveModeratorName,
     });
     return c.json({ ok: false, error: 'Jury case not found.' }, 404);
   }
@@ -450,7 +489,7 @@ api.post('/jury/vote', async (c) => {
   if (!scopeCheck.valid) {
     logSecurityEvent({
       type: 'scope-mismatch',
-      moderator: username,
+      moderator: effectiveModeratorName,
       subredditId: subredditId,
       resourceId: input.caseId,
       resourceType: 'jury-case',
@@ -459,6 +498,7 @@ api.post('/jury/vote', async (c) => {
         caseSubredditId: existingCase.subredditId,
         currentSubredditId: subredditId,
         voteAttempted: input.vote,
+        devMode: isDevModeRequested,
       },
     });
 
@@ -466,8 +506,9 @@ api.post('/jury/vote', async (c) => {
       caseId: input.caseId,
       caseSubredditId: existingCase.subredditId,
       requestSubredditId: subredditId,
-      moderator: username,
+      moderator: effectiveModeratorName,
       vote: input.vote,
+      devMode: isDevModeRequested,
       timestamp: auditContext.timestamp,
     });
 
@@ -483,19 +524,27 @@ api.post('/jury/vote', async (c) => {
   }
 
   // Record vote with full auditability
+  // In dev mode, allow duplicate votes by passing devMode flag
+  // IMPORTANT: Always pass the real moderator for execution context
   const { juryCase, duplicate, resolved } = await addVote({
     caseId: input.caseId,
-    moderator: username,
+    moderator: effectiveModeratorName,  // For display (could be simulated in dev mode)
     vote: input.vote,
+    devMode: isDevModeRequested,
+    realModerator: username,  // For actual Reddit execution (always real)
   });
 
   // Log the vote for transparency
+  const voteAction = isDevModeRequested
+    ? `Jury vote: ${input.vote.toUpperCase()} [DEV MODE - ${effectiveModeratorName}]`
+    : `Jury vote: ${input.vote.toUpperCase()}`;
+
   await logActivity({
     subredditId,
-    action: `Jury vote: ${input.vote.toUpperCase()}`,
-    moderator: username,
+    action: voteAction,
+    moderator: effectiveModeratorName,
     tone: input.vote === 'abstain' ? 'soft' : input.vote === 'remove' ? 'bad' : 'good',
-    detail: `Post: ${existingCase.postId} • Case: ${input.caseId.substring(0, 20)}...`,
+    detail: `Post: ${existingCase.postId} • Case: ${input.caseId.substring(0, 20)}...${isDevModeRequested ? ' [DEV]' : ''}`,
     timestamp: auditContext.timestamp,
   });
 
@@ -503,9 +552,10 @@ api.post('/jury/vote', async (c) => {
     caseId: juryCase.id,
     caseSubredditId: juryCase.subredditId,
     vote: input.vote,
-    moderator: username,
+    moderator: effectiveModeratorName,
     duplicate,
     resolved,
+    devMode: isDevModeRequested,
     status: juryCase.status,
     finalVerdict: juryCase.finalVerdict,
     timestamp: auditContext.timestamp,
