@@ -7,6 +7,10 @@
 
 import { redis } from '@devvit/redis';
 import { logActivity, type ActivityTone } from './activity';
+import {
+  executeRemovalVerdict,
+  executeApprovalVerdict,
+} from './moderation';
 
 export type JuryVoteValue = 'approve' | 'remove' | 'abstain';
 export type JuryCaseStatus = 'pending' | 'resolved';
@@ -332,6 +336,81 @@ export async function addVote(input: {
       detail: `${juryCase.postId} • Verdict: ${verdict.toUpperCase()}`,
       timestamp: updatedCase.resolvedAt,
     });
+
+    // EXECUTE VERDICT ON REDDIT
+    if (verdict === 'remove') {
+      console.log('[ModPulse][jury] executing REMOVE verdict on Reddit', {
+        caseId: updatedCase.id,
+        postId: updatedCase.postId,
+      });
+
+      try {
+        const outcome = await executeRemovalVerdict({
+          postId: updatedCase.postId,
+          subredditId: updatedCase.subredditId,
+          caseId: updatedCase.id,
+          reason: updatedCase.reason,
+          ruleCitation: updatedCase.ruleCitation,
+          executedBy: input.moderator,
+        });
+
+        if (outcome.success) {
+          await logActivity({
+            subredditId: juryCase.subredditId,
+            action: 'Post removed per jury verdict',
+            moderator: input.moderator,
+            tone: 'bad',
+            detail: `${juryCase.postId} • Post is no longer visible on Reddit`,
+            timestamp: updatedCase.resolvedAt + 1,
+          });
+        } else {
+          await logActivity({
+            subredditId: juryCase.subredditId,
+            action: 'Removal execution failed',
+            moderator: input.moderator,
+            tone: 'bad',
+            detail: `${juryCase.postId} • ${outcome.message}`,
+            timestamp: updatedCase.resolvedAt + 2,
+          });
+        }
+      } catch (err) {
+        console.error('[ModPulse][jury] verdict execution error', {
+          caseId: updatedCase.id,
+          error: err,
+        });
+      }
+    } else if (verdict === 'approve') {
+      console.log('[ModPulse][jury] executing APPROVE verdict', {
+        caseId: updatedCase.id,
+        postId: updatedCase.postId,
+      });
+
+      try {
+        const outcome = await executeApprovalVerdict({
+          postId: updatedCase.postId,
+          subredditId: updatedCase.subredditId,
+          caseId: updatedCase.id,
+          reason: updatedCase.reason,
+          executedBy: input.moderator,
+        });
+
+        if (outcome.success) {
+          await logActivity({
+            subredditId: juryCase.subredditId,
+            action: 'Post approved by consensus',
+            moderator: input.moderator,
+            tone: 'good',
+            detail: `${juryCase.postId} • Case closed, no removal`,
+            timestamp: updatedCase.resolvedAt + 1,
+          });
+        }
+      } catch (err) {
+        console.error('[ModPulse][jury] verdict execution error', {
+          caseId: updatedCase.id,
+          error: err,
+        });
+      }
+    }
   }
 
   await saveJuryCase(updatedCase);

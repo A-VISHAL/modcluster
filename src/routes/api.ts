@@ -24,6 +24,7 @@ import {
   logSecurityEvent,
   getAuditContext,
 } from '../core/security';
+import { executeImmediateAction } from '../core/moderation';
 
 export const api = new Hono();
 
@@ -511,4 +512,121 @@ api.post('/jury/vote', async (c) => {
   });
 
   return c.json({ ok: true, duplicate, resolved }, 200);
+});
+
+/**
+ * IMMEDIATE ACTION MODE: Emergency moderation
+ *
+ * Allows a single moderator to take emergency moderation action without jury review.
+ * Used for critical safety situations:
+ * - Doxxing, violent threats
+ * - Explicit/illegal content
+ * - Active spam/malware attacks
+ * - Ban evasion
+ *
+ * ACTION TYPES:
+ * - "remove": Delete the post immediately
+ * - "lock": Lock post to prevent new comments
+ * - "both": Remove and lock
+ *
+ * Security: Full subreddit-scoped validation + activity logging
+ */
+api.post('/moderation/immediate', async (c) => {
+  const subredditId = requireSubredditId();
+  const username = getCurrentModerator();
+  const auditContext = getAuditContext();
+
+  const input = await c.req.json<{
+    postId?: string;
+    actionType?: 'remove' | 'lock' | 'both';
+    reason?: string;
+    lockComments?: boolean;
+  }>();
+
+  const postId = (input.postId ?? '').trim();
+  const actionType = input.actionType ?? 'remove';
+  const reason = (input.reason ?? '').trim() || 'Emergency moderation action';
+  const lockComments = input.lockComments !== false;
+
+  // Validation
+  if (!postId) {
+    return c.json({ ok: false, error: 'postId is required.' }, 400);
+  }
+
+  if (!['remove', 'lock', 'both'].includes(actionType)) {
+    return c.json(
+      { ok: false, error: "actionType must be 'remove', 'lock', or 'both'." },
+      400
+    );
+  }
+
+  console.log('[ModPulse][security] immediate action initiated', {
+    subredditId,
+    moderator: username,
+    postId,
+    actionType,
+    reason,
+    timestamp: auditContext.timestamp,
+  });
+
+  try {
+    // Execute the immediate action
+    const outcome = await executeImmediateAction({
+      postId,
+      subredditId,
+      actionType,
+      reason,
+      lockComments,
+      moderator: username,
+    });
+
+    console.log('[ModPulse][security] immediate action completed', {
+      subredditId,
+      moderator: username,
+      postId,
+      actionType,
+      success: outcome.success,
+      timestamp: auditContext.timestamp,
+    });
+
+    if (!outcome.success) {
+      return c.json(
+        {
+          ok: false,
+          error: outcome.message,
+          details: outcome.details,
+        },
+        400
+      );
+    }
+
+    return c.json(
+      {
+        ok: true,
+        message: outcome.message,
+        actionType: outcome.actionType,
+        details: outcome.details,
+      },
+      200
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    console.error('[ModPulse][security] immediate action failed', {
+      subredditId,
+      moderator: username,
+      postId,
+      actionType,
+      error: errorMessage,
+      timestamp: auditContext.timestamp,
+    });
+
+    return c.json(
+      {
+        ok: false,
+        error: `Immediate action failed: ${errorMessage}`,
+      },
+      500
+    );
+  }
 });
