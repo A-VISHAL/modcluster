@@ -453,3 +453,38 @@ See the `LICENSE` file for full details.
 If this helped your mod team, please give it a ⭐
 
 </div>
+The latest update added comprehensive security hardening to ModPulse AI.
+
+The system is now fully subreddit-scoped, meaning all moderation workflows are restricted to the currently active subreddit and cannot affect other communities.
+
+Key improvements include:
+
+* validation checks before moderation actions,
+* secure jury vote verification,
+* subreddit ownership enforcement,
+* Redis scope validation,
+* audit logging for all moderator actions,
+* security event logging,
+* and a visible “🔒 Scoped” trust indicator in the dashboard UI.
+
+The platform now logs:
+
+* moderator identity,
+* subreddit ID,
+* timestamps,
+* vote actions,
+* handover actions,
+* and verdict resolution events.
+
+Cross-subreddit moderation attempts are blocked and logged automatically.
+
+The update also preserved all existing functionality:
+
+* Jury Verdict Board
+* Shift Handovers
+* Activity Feed
+* AI moderation workflows
+* Redis persistence
+* Devvit Web dashboard architecture
+
+Overall, the system now feels significantly more trustworthy, transparent, auditable, and production-oriented while maintaining the existing moderator experience.
