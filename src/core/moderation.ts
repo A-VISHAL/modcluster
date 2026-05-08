@@ -19,6 +19,18 @@ function ensurePostFullname(postId: string): `t3_${string}` {
   return `t3_${postId}` as `t3_${string}`;
 }
 
+function isSubredditScopeMatch(
+  post: { subredditName: string; subredditId: string | undefined },
+  subredditScope: string
+): boolean {
+  const expected = subredditScope.toLowerCase();
+  const postName = post.subredditName.toLowerCase();
+  const postId = post.subredditId?.toLowerCase();
+
+  // Accept either subreddit name (legacy/demo) or subreddit ID (t5_xxx).
+  return postName === expected || postId === expected;
+}
+
 export type ModerationActionType = 'remove' | 'approve' | 'immediate';
 
 export type ModerationOutcome = {
@@ -141,16 +153,26 @@ async function removePost(postId: string, subredditId: string): Promise<boolean>
       return false;
     }
 
-    // PHASE 2: Validate subreddit scope
+    // PHASE 2: Validate subreddit scope (name/id-safe)
+    const postSubredditId = (post as { subredditId?: string }).subredditId;
+    const scopeMatch = isSubredditScopeMatch(
+      {
+        subredditName: post.subredditName,
+        subredditId: postSubredditId,
+      },
+      subredditId
+    );
+
     console.log('[ModPulse][moderation] [PHASE 2] Validating subreddit scope', {
       postSubreddit: post.subredditName,
+      postSubredditId,
       expectedSubreddit: subredditId,
-      match: post.subredditName.toLowerCase() === subredditId.toLowerCase(),
+      match: scopeMatch,
     });
 
-    if (post.subredditName.toLowerCase() !== subredditId.toLowerCase()) {
+    if (!scopeMatch) {
       throw new Error(
-        `Subreddit mismatch: post is from r/${post.subredditName}, expected r/${subredditId}`
+        `Subreddit mismatch: post is in r/${post.subredditName} (${postSubredditId ?? 'unknown-id'}), expected scope ${subredditId}`
       );
     }
 
@@ -247,10 +269,28 @@ async function removePost(postId: string, subredditId: string): Promise<boolean>
       }
     }
 
+    // PHASE 5: Verify final removal state via refetch.
+    let verifiedRemoved = post.removed;
+    try {
+      const verifiedPost = await reddit.getPostById(fullname);
+      verifiedRemoved = Boolean(verifiedPost?.removed);
+      console.log('[ModPulse][moderation] [PHASE 5] Removal verification', {
+        postId,
+        verifiedRemoved,
+      });
+    } catch (verifyError) {
+      console.error('[ModPulse][moderation] [PHASE 5 ✗] Verification refetch failed', {
+        postId,
+        errorMessage: String(verifyError),
+        stackTrace: verifyError instanceof Error ? verifyError.stack : 'No stack trace',
+      });
+    }
+
     console.log('[ModPulse][moderation] ========== REMOVAL PHASE: SUCCESS ==========', {
       postId,
       subredditName: post.subredditName,
       author: post.authorName,
+      verifiedRemoved,
       timestamp: Date.now(),
     });
 
@@ -290,10 +330,19 @@ async function lockPost(postId: string, subredditId: string): Promise<boolean> {
       return false;
     }
 
-    // Verify subreddit match
-    if (post.subredditName.toLowerCase() !== subredditId.toLowerCase()) {
+    // Verify subreddit scope (name/id-safe)
+    const postSubredditId = (post as { subredditId?: string }).subredditId;
+    const scopeMatch = isSubredditScopeMatch(
+      {
+        subredditName: post.subredditName,
+        subredditId: postSubredditId,
+      },
+      subredditId
+    );
+
+    if (!scopeMatch) {
       throw new Error(
-        `Subreddit mismatch: post is from r/${post.subredditName}, expected r/${subredditId}`
+        `Subreddit mismatch: post is in r/${post.subredditName} (${postSubredditId ?? 'unknown-id'}), expected scope ${subredditId}`
       );
     }
 
