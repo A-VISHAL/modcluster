@@ -43,6 +43,10 @@ body {
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
+body.modalOpen {
+  overflow: hidden;
+}
+
 .app {
   padding: 18px;
 }
@@ -126,6 +130,35 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.securityBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  padding: 6px 10px;
+  border: 1px solid rgba(67, 243, 197, 0.3);
+  border-radius: 999px;
+  background: rgba(67, 243, 197, 0.08);
+  color: rgba(67, 243, 197, 0.85);
+  cursor: help;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.securityBadge:hover {
+  background: rgba(67, 243, 197, 0.12);
+  border-color: rgba(67, 243, 197, 0.5);
+}
+
+.securityBadgeIcon {
+  font-size: 10px;
+}
+
+.securityBadgeText {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .grid {
@@ -373,12 +406,23 @@ body {
 }
 
 .iconBtn {
-  border: 1px solid var(--stroke);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text);
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
   border-radius: 10px;
   padding: 6px 10px;
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.iconBtn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--text);
+}
+
+.iconBtn:active {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .skeleton {
@@ -685,28 +729,58 @@ body {
 .modalBack {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.62);
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(2px);
   display: none;
   align-items: center;
   justify-content: center;
   padding: 16px;
+  z-index: 9999;
+  animation: fadeIn 140ms ease;
 }
 
 .modalBack.open {
   display: flex;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .modal {
-  width: min(760px, 100%);
+  position: relative;
+  width: min(680px, 100%);
+  max-height: min(85vh, calc(100vh - 40px));
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(180deg, rgba(16, 22, 45, 0.92), rgba(12, 16, 34, 0.92));
+  background: linear-gradient(180deg, rgba(16, 22, 45, 1), rgba(12, 16, 34, 1));
   box-shadow: var(--shadow);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  z-index: 10000;
+  animation: slideUp 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .modalHeader {
-  padding: 14px 14px 10px 14px;
+  flex-shrink: 0;
+  padding: 18px 18px 14px 18px;
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -716,19 +790,50 @@ body {
 
 .modalTitle {
   font-weight: 900;
+  font-size: 16px;
+  letter-spacing: -0.01em;
 }
 
 .modalSub {
   color: var(--muted);
   font-size: 12px;
   margin-top: 4px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 .modalForm {
-  padding: 14px;
+  flex: 1;
+  min-height: 0;
+  padding: 18px;
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.modalForm::-webkit-scrollbar {
+  width: 6px;
+}
+
+.modalForm::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modalForm::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.modalForm::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .fieldLabel {
@@ -736,28 +841,43 @@ body {
   color: var(--muted2);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 600;
 }
 
 .fieldInput {
   margin-top: 8px;
   width: 100%;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.9);
-  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.92);
+  padding: 11px 13px;
   font-family: inherit;
+  font-size: 13px;
   resize: vertical;
+  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  min-height: 40px;
+}
+
+textarea.fieldInput {
+  min-height: 80px;
+  max-height: 160px;
 }
 
 .fieldInput::placeholder {
-  color: rgba(255, 255, 255, 0.42);
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .fieldInput:focus {
   outline: none;
-  border-color: rgba(45, 212, 255, 0.35);
-  box-shadow: 0 0 0 3px rgba(45, 212, 255, 0.12);
+  border-color: rgba(45, 212, 255, 0.50);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 3px rgba(45, 212, 255, 0.15);
+}
+
+.fieldInput:hover:not(:focus) {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .aiPanel {
@@ -883,10 +1003,19 @@ body {
 }
 
 .modalActions {
+  flex-shrink: 0;
   display: flex;
-  gap: 10px;
+  gap: 12px;
   justify-content: flex-end;
-  padding-top: 4px;
+  padding: 14px 18px 18px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.05));
+}
+
+.modalActions .btn {
+  min-width: 100px;
+  padding: 11px 16px;
+  font-size: 13px;
 }
 
 @media (max-width: 900px) {
@@ -912,6 +1041,81 @@ body {
   }
   .activityFeed {
     max-height: 320px;
+  }
+  
+  /* Modal responsive adjustments */
+  .modalBack {
+    padding: 12px;
+  }
+  
+  .modal {
+    width: min(95vw, 100%);
+    max-height: min(90vh, calc(100vh - 24px));
+  }
+  
+  .modalHeader {
+    padding: 16px 16px 12px 16px;
+  }
+  
+  .modalForm {
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .modalActions {
+    padding: 12px 16px 16px 16px;
+    gap: 10px;
+  }
+  
+  .modalActions .btn {
+    flex: 1;
+    min-width: auto;
+  }
+  
+  textarea.fieldInput {
+    min-height: 70px;
+    max-height: 140px;
+  }
+}
+
+@media (max-width: 480px) {
+  .modal {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    border-radius: 14px;
+  }
+  
+  .modalHeader {
+    padding: 14px 14px 10px 14px;
+  }
+  
+  .modalTitle {
+    font-size: 15px;
+  }
+  
+  .modalForm {
+    padding: 14px;
+    gap: 11px;
+  }
+  
+  .modalActions {
+    padding: 10px 14px 14px 14px;
+    flex-direction: column-reverse;
+  }
+  
+  .modalActions .btn {
+    width: 100%;
+    padding: 12px;
+  }
+  
+  textarea.fieldInput {
+    min-height: 60px;
+    max-height: 120px;
+  }
+  
+  .fieldInput {
+    padding: 10px 12px;
+    font-size: 16px;
   }
 }
 

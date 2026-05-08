@@ -270,8 +270,8 @@ const renderJury = (payload: DashboardPayload) => {
           ${
             bucket === 'pending'
               ? `
-          <button class="btn btnSoft" data-action="approve" data-id="${escapeHtml(juryCase.id)}" type="button">Approve</button>
-          <button class="btn btnSoft" data-action="remove" data-id="${escapeHtml(juryCase.id)}" type="button">Remove</button>
+          <button class="btn btnGhost" data-action="approve" data-id="${escapeHtml(juryCase.id)}" type="button">Approve</button>
+          <button class="btn btnGhost" data-action="remove" data-id="${escapeHtml(juryCase.id)}" type="button">Remove</button>
           <button class="btn btnGhost" data-action="abstain" data-id="${escapeHtml(juryCase.id)}" type="button">Abstain</button>
           `
               : `<span class="chip chipSoft"><span class="pulseDot"></span>&nbsp;Resolved</span>`
@@ -446,30 +446,36 @@ const modalBack = byId<HTMLDivElement>('handoverModalBack');
 const openHandoverModal = () => {
   modalBack.classList.add('open');
   modalBack.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modalOpen');
 };
 const closeHandoverModal = () => {
   modalBack.classList.remove('open');
   modalBack.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modalOpen');
 };
 
 const juryModalBack = byId<HTMLDivElement>('juryModalBack');
 const openJuryModal = () => {
   juryModalBack.classList.add('open');
   juryModalBack.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modalOpen');
 };
 const closeJuryModal = () => {
   juryModalBack.classList.remove('open');
   juryModalBack.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modalOpen');
 };
 
 const handoverHistoryModalBack = byId<HTMLDivElement>('handoverHistoryModalBack');
 const openHandoverHistoryModal = () => {
   handoverHistoryModalBack.classList.add('open');
   handoverHistoryModalBack.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('modalOpen');
 };
 const closeHandoverHistoryModal = () => {
   handoverHistoryModalBack.classList.remove('open');
   handoverHistoryModalBack.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('modalOpen');
 };
 
 const wireModal = () => {
@@ -478,6 +484,9 @@ const wireModal = () => {
   byId<HTMLButtonElement>('handoverCancelBtn').addEventListener('click', () => closeHandoverModal());
   modalBack.addEventListener('click', (e) => {
     if (e.target === modalBack) closeHandoverModal();
+  });
+  modalBack.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeHandoverModal();
   });
 
   const form = byId<HTMLFormElement>('handoverForm');
@@ -587,6 +596,9 @@ const wireJuryModal = () => {
   juryModalBack.addEventListener('click', (e) => {
     if (e.target === juryModalBack) closeJuryModal();
   });
+  juryModalBack.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeJuryModal();
+  });
 
   const form = byId<HTMLFormElement>('juryForm');
   form.addEventListener('submit', async (e) => {
@@ -623,6 +635,9 @@ const wireHistoryModal = () => {
   byId<HTMLButtonElement>('handoverHistoryDoneBtn').addEventListener('click', () => closeHandoverHistoryModal());
   handoverHistoryModalBack.addEventListener('click', (e) => {
     if (e.target === handoverHistoryModalBack) closeHandoverHistoryModal();
+  });
+  handoverHistoryModalBack.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeHandoverHistoryModal();
   });
 };
 

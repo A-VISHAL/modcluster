@@ -6,7 +6,7 @@ import {
   fetchHandoverHistory,
   saveHandover,
 } from '../core/handover';
-import { fetchRecentActivity } from '../core/activity';
+import { fetchRecentActivity, logActivity } from '../core/activity';
 import {
   addVote,
   countVotes,
@@ -17,6 +17,13 @@ import {
   saveNewJuryCase,
   type JuryVoteValue,
 } from '../core/jury';
+import {
+  getCurrentSubreddit,
+  getCurrentModerator,
+  validateSubredditScope,
+  logSecurityEvent,
+  getAuditContext,
+} from '../core/security';
 
 export const api = new Hono();
 
@@ -307,7 +314,8 @@ api.get('/dashboard', async (c) => {
 
 api.post('/handover', async (c) => {
   const subredditId = requireSubredditId();
-  const username = context.username ?? 'moderator';
+  const username = getCurrentModerator();
+  const auditContext = getAuditContext();
 
   const input = await c.req.json<{
     activeSituations?: string;
@@ -315,6 +323,12 @@ api.post('/handover', async (c) => {
     priorityPosts?: string;
     notes?: string;
   }>();
+
+  console.log('[ModPulse][security] Handover creation initiated', {
+    subredditId,
+    username,
+    timestamp: auditContext.timestamp,
+  });
 
   const card = createHandoverCard({
     author: username,
@@ -326,13 +340,30 @@ api.post('/handover', async (c) => {
 
   await saveHandover(subredditId, card);
 
+  // Log the handover creation for auditability
+  await logActivity({
+    subredditId,
+    action: 'Shift handover created',
+    moderator: username,
+    tone: 'good',
+    detail: `Handover recorded for shift transition • Situations: ${card.activeSituations?.substring(0, 40) || 'none'}...`,
+    timestamp: card.timestamp,
+  });
+
+  console.log('[ModPulse][security] Handover successfully persisted', {
+    subredditId,
+    author: username,
+    timestamp: card.timestamp,
+  });
+
   return c.json({ ok: true }, 200);
 });
 
 api.post('/jury/case', async (c) => {
   const subredditId = requireSubredditId();
-  const username = context.username ?? 'moderator';
-  const now = Date.now();
+  const username = getCurrentModerator();
+  const auditContext = getAuditContext();
+  const now = auditContext.timestamp;
 
   const input = await c.req.json<{
     postId?: string;
@@ -347,10 +378,11 @@ api.post('/jury/case', async (c) => {
     return c.json({ ok: false, error: 'postId is required.' }, 400);
   }
 
-  console.log('[ModPulse][api] create jury case request', {
+  console.log('[ModPulse][security] create jury case request', {
     subredditId,
     username,
     postId,
+    timestamp: now,
   });
 
   const juryCase = createJuryCase({
@@ -372,10 +404,12 @@ api.post('/jury/case', async (c) => {
 
   await saveNewJuryCase(juryCase);
 
-  console.log('[ModPulse][api] jury case created', {
+  console.log('[ModPulse][security] jury case created', {
     caseId: juryCase.id,
     subredditId: juryCase.subredditId,
     postId: juryCase.postId,
+    createdBy: username,
+    timestamp: now,
   });
 
   return c.json({ ok: true, id: juryCase.id }, 200);
@@ -383,47 +417,97 @@ api.post('/jury/case', async (c) => {
 
 api.post('/jury/vote', async (c) => {
   const subredditId = requireSubredditId();
-  const username = context.username ?? 'moderator';
+  const username = getCurrentModerator();
+  const auditContext = getAuditContext();
 
   const input = await c.req.json<{
     caseId: string;
     vote: JuryVoteValue;
   }>();
 
-  console.log('[ModPulse][api] vote request', {
+  console.log('[ModPulse][security] vote request initiated', {
     subredditId,
     username,
     caseId: input.caseId,
     vote: input.vote,
+    timestamp: auditContext.timestamp,
   });
 
+  // Validate case exists
   const existingCase = await fetchJuryCase(input.caseId);
   if (!existingCase) {
-    console.log('[ModPulse][api] vote rejected - case missing', { caseId: input.caseId });
+    console.warn('[ModPulse][security] vote rejected - case missing', {
+      caseId: input.caseId,
+      subredditId,
+      moderator: username,
+    });
     return c.json({ ok: false, error: 'Jury case not found.' }, 404);
   }
 
-  if (existingCase.subredditId !== subredditId) {
-    console.log('[ModPulse][api] vote rejected - subreddit mismatch', {
+  // CRITICAL SAFETY CHECK: Verify case belongs to current subreddit
+  const scopeCheck = validateSubredditScope(existingCase.subredditId, 'Jury case');
+  if (!scopeCheck.valid) {
+    logSecurityEvent({
+      type: 'scope-mismatch',
+      moderator: username,
+      subredditId: subredditId,
+      resourceId: input.caseId,
+      resourceType: 'jury-case',
+      reason: 'Case subreddit ID does not match current subreddit context',
+      details: {
+        caseSubredditId: existingCase.subredditId,
+        currentSubredditId: subredditId,
+        voteAttempted: input.vote,
+      },
+    });
+
+    console.error('[ModPulse][security] CROSS-SUBREDDIT VOTE BLOCKED', {
       caseId: input.caseId,
       caseSubredditId: existingCase.subredditId,
       requestSubredditId: subredditId,
+      moderator: username,
+      vote: input.vote,
+      timestamp: auditContext.timestamp,
     });
-    return c.json({ ok: false, error: 'Case does not belong to this subreddit.' }, 400);
+
+    return c.json(
+      {
+        ok: false,
+        error:
+          'Security validation failed: Case belongs to a different subreddit. ' +
+          'Cross-subreddit moderation actions are not permitted.',
+      },
+      403
+    );
   }
 
+  // Record vote with full auditability
   const { juryCase, duplicate, resolved } = await addVote({
     caseId: input.caseId,
     moderator: username,
     vote: input.vote,
   });
 
-  console.log('[ModPulse][api] vote mutation completed', {
+  // Log the vote for transparency
+  await logActivity({
+    subredditId,
+    action: `Jury vote: ${input.vote.toUpperCase()}`,
+    moderator: username,
+    tone: input.vote === 'abstain' ? 'soft' : input.vote === 'remove' ? 'bad' : 'good',
+    detail: `Post: ${existingCase.postId} • Case: ${input.caseId.substring(0, 20)}...`,
+    timestamp: auditContext.timestamp,
+  });
+
+  console.log('[ModPulse][security] vote mutation completed', {
     caseId: juryCase.id,
+    caseSubredditId: juryCase.subredditId,
+    vote: input.vote,
+    moderator: username,
     duplicate,
     resolved,
     status: juryCase.status,
     finalVerdict: juryCase.finalVerdict,
+    timestamp: auditContext.timestamp,
   });
 
   return c.json({ ok: true, duplicate, resolved }, 200);
