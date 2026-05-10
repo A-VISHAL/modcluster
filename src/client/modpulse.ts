@@ -88,6 +88,17 @@ type DashboardPayload = {
     queueBacklog: number;
     moderatorWorkload: number;
     burnoutRisk: 'low' | 'medium' | 'high';
+    unresolvedReports: number;
+    activeJuryCases: number;
+    moderationActions24h: number;
+    removalsToday: number;
+    escalationFrequency: number;
+    avgResponseMinutes: number | null;
+    metricsSource: 'redis' | 'reddit';
+  };
+  insights: {
+    headline: string;
+    details: string[];
   };
 };
 
@@ -110,7 +121,7 @@ const devModeState: DevModeState = {
 const devModeratorNames = ['TestMod_1', 'TestMod_2', 'TestMod_3'];
 
 const getNextDevModerator = (): string => {
-  const name = devModeratorNames[devModeState.moderatorIndex];
+  const name = devModeratorNames[devModeState.moderatorIndex] ?? devModeratorNames[0] ?? 'TestMod_1';
   devModeState.moderatorIndex = (devModeState.moderatorIndex + 1) % devModeratorNames.length;
   return name;
 };
@@ -213,6 +224,27 @@ const renderHeroMetrics = (payload: DashboardPayload) => {
   byId<HTMLDivElement>('mBurnout').textContent = payload.communityHealth.burnoutRisk.toUpperCase();
 };
 
+const renderHeroSummary = (payload: DashboardPayload) => {
+  const titleEl = document.querySelector<HTMLDivElement>('.heroTitle');
+  const bodyEl = document.querySelector<HTMLDivElement>('.heroBody');
+  if (!titleEl || !bodyEl) return;
+
+  const ins = payload.insights;
+  titleEl.textContent = ins.headline || 'Operational update';
+
+  if (!ins.details || ins.details.length === 0) {
+    bodyEl.textContent = 'No significant moderation escalations detected in the recent operational window.';
+    return;
+  }
+
+  const bullets = ins.details.map((d) => `<li>${escapeHtml(d)}</li>`).join('');
+  bodyEl.innerHTML = `
+    <ul class="heroInsights">
+      ${bullets}
+    </ul>
+  `;
+};
+
 const renderHandover = (payload: DashboardPayload) => {
   const body = byId<HTMLDivElement>('handoverBody');
   const active = payload.handover.active;
@@ -255,8 +287,8 @@ const renderJury = (payload: DashboardPayload) => {
   if (!cases.length && !resolved.length) {
     list.innerHTML = `
       <div class="case">
-        <div class="caseTitle">No pending cases</div>
-        <div class="caseMeta">When moderators flag borderline content, it appears here for collaborative voting.</div>
+        <div class="caseTitle">No active jury cases</div>
+        <div class="caseMeta">Flagged moderation cases will appear here for collaborative voting when needed.</div>
       </div>
     `;
     return;
@@ -371,6 +403,12 @@ const renderHealth = (payload: DashboardPayload) => {
   const grid = byId<HTMLDivElement>('healthGrid');
   const h = payload.communityHealth;
   const burnoutTone = h.burnoutRisk === 'high' ? 'chipBad' : h.burnoutRisk === 'medium' ? 'chipWarn' : 'chipGood';
+  const hasOperationalSignals =
+    h.reportsToday > 0 ||
+    h.toxicityAlerts > 0 ||
+    h.queueBacklog > 0 ||
+    h.activeJuryCases > 0 ||
+    h.moderationActions24h > 0;
 
   grid.innerHTML = '';
   const stat = (label: string, value: string, extraChip?: HTMLElement) => {
@@ -384,10 +422,34 @@ const renderHealth = (payload: DashboardPayload) => {
     return el;
   };
 
+  if (!hasOperationalSignals) {
+    const empty = document.createElement('div');
+    empty.className = 'activityEmpty';
+    empty.innerHTML = `
+      <div class="activityEmptyTitle">Community operating normally</div>
+      <div class="activityEmptyBody">No active jury cases, unresolved reports, or escalation signals in the last 24 hours.</div>
+    `;
+    grid.appendChild(empty);
+    return;
+  }
+
+  const responseMinutes = h.avgResponseMinutes === null ? 'N/A' : `${h.avgResponseMinutes}m`;
+
   grid.append(
     stat('Reports today', String(h.reportsToday)),
     stat('Toxicity alerts', String(h.toxicityAlerts)),
     stat('Queue backlog', String(h.queueBacklog)),
+    stat('Unresolved reports', String(h.unresolvedReports)),
+    stat('Active jury cases', String(h.activeJuryCases)),
+    stat('Moderation actions (24h)', String(h.moderationActions24h)),
+    stat('Removals today', String(h.removalsToday)),
+    stat('Escalation frequency', `${h.escalationFrequency}%`),
+    stat('Avg response time', responseMinutes, (() => {
+      const sourceChip = document.createElement('span');
+      sourceChip.className = 'chip chipSoft';
+      sourceChip.textContent = `Source: ${h.metricsSource.toUpperCase()}`;
+      return sourceChip;
+    })()),
     stat('Moderator workload', `${h.moderatorWorkload}%`, (() => {
       const el = document.createElement('span');
       el.className = `chip ${burnoutTone}`;
@@ -404,8 +466,8 @@ const renderActivity = (payload: DashboardPayload) => {
   if (!items.length) {
     feed.innerHTML = `
       <div class="activityEmpty">
-        <div class="activityEmptyTitle">No recent moderator activity</div>
-        <div class="activityEmptyBody">Actions from jury votes, handovers, and system signals will appear here as the subreddit gets active.</div>
+        <div class="activityEmptyTitle">No recent escalations</div>
+        <div class="activityEmptyBody">Community operating normally. Jury votes, handovers, and moderation lifecycle events will appear here as activity occurs.</div>
       </div>
     `;
     return;
@@ -648,6 +710,7 @@ const refresh = async () => {
   renderStatus(payload);
   renderMeta(payload);
   renderHeroMetrics(payload);
+  renderHeroSummary(payload);
   renderHandover(payload);
   renderJury(payload);
   renderHealth(payload);
@@ -714,7 +777,7 @@ const boot = async () => {
 
   try {
     await refresh();
-    // Small "live" feel for judging demos: refresh periodically, but keep it light.
+    // Keep operational state reasonably fresh without excessive API load.
     window.setInterval(async () => {
       try {
         await refresh();

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { context, redis as webRedis } from '@devvit/web/server';
+import { context, reddit, redis as webRedis } from '@devvit/web/server';
 import {
   createHandoverCard,
   fetchActiveHandover,
@@ -15,16 +15,17 @@ import {
   fetchJuryCase,
   fetchResolvedCases,
   saveNewJuryCase,
+  type JuryCase,
   type JuryVoteValue,
 } from '../core/jury';
 import {
-  getCurrentSubreddit,
   getCurrentModerator,
   validateSubredditScope,
   logSecurityEvent,
   getAuditContext,
 } from '../core/security';
 import { executeImmediateAction } from '../core/moderation';
+import { generateInsights } from '../core/insights';
 
 export const api = new Hono();
 
@@ -86,6 +87,17 @@ type DashboardPayload = {
     queueBacklog: number;
     moderatorWorkload: number;
     burnoutRisk: 'low' | 'medium' | 'high';
+    unresolvedReports: number;
+    activeJuryCases: number;
+    moderationActions24h: number;
+    removalsToday: number;
+    escalationFrequency: number;
+    avgResponseMinutes: number | null;
+    metricsSource: 'redis' | 'reddit';
+  };
+  insights: {
+    headline: string;
+    details: string[];
   };
 };
 
@@ -97,65 +109,241 @@ const requireSubredditId = (): string => {
   return context.subredditId;
 };
 
-const computeCommunityHealth = (seed: number): DashboardPayload['communityHealth'] => {
-  // Deterministic-ish demo numbers, stable per subreddit + time window.
-  const rand = (n: number) => Math.abs(Math.sin(seed * 997 + n * 17));
-  const queueBacklog = Math.floor(rand(1) * 42) + 6;
-  const reportsToday = Math.floor(rand(2) * 35) + 4;
-  const toxicityAlerts = Math.floor(rand(3) * 9);
-  const moderatorWorkload = Math.min(100, Math.floor(queueBacklog * 2.1 + reportsToday * 1.4));
-  const burnoutRisk = moderatorWorkload > 75 ? 'high' : moderatorWorkload > 45 ? 'medium' : 'low';
+const DEMO_CASE_PATTERNS = ['t3_demo_case_', 'seed-'];
+
+const isDemoText = (value: string | null | undefined): boolean => {
+  const normalized = (value ?? '').toLowerCase();
+  return (
+    normalized.includes('demo_case') ||
+    normalized.includes('seed-') ||
+    normalized.includes('possible brigading / coordinated voting pattern detected') ||
+    normalized.includes('clustered reports') ||
+    normalized.includes('t3_prev_')
+  );
+};
+
+const isDemoCase = (juryCase: JuryCase): boolean => {
+  const id = juryCase.id.toLowerCase();
+  const postId = juryCase.postId.toLowerCase();
+
+  if (DEMO_CASE_PATTERNS.some((pattern) => id.includes(pattern) || postId.includes(pattern))) {
+    return true;
+  }
+
+  return (
+    isDemoText(juryCase.reason) ||
+    isDemoText(juryCase.contextNotes) ||
+    isDemoText(juryCase.ruleCitation)
+  );
+};
+
+const isDemoActivity = (event: Awaited<ReturnType<typeof fetchRecentActivity>>[number]): boolean => {
+  return isDemoText(event.action) || isDemoText(event.detail);
+};
+
+const cleanupLegacyDemoQueueEntries = async (subredditId: string): Promise<void> => {
+  const legacyIds = [
+    `seed-${subredditId}-1`,
+    `seed-${subredditId}-2`,
+    `seed-${subredditId}-3`,
+    't3_demo_case_1',
+    't3_demo_case_2',
+    't3_demo_case_3',
+  ];
+
+  try {
+    await Promise.all([
+      webRedis.zRem(`jury:${subredditId}:active`, legacyIds),
+      webRedis.zRem(`jury:${subredditId}:history`, legacyIds),
+    ]);
+  } catch (error) {
+    console.warn('[ModPulse][api] Demo queue cleanup skipped', {
+      subredditId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+const callRedditCount = async (
+  methodNames: string[],
+  argSets: unknown[][]
+): Promise<number | undefined> => {
+  const api = reddit as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+
+  for (const methodName of methodNames) {
+    const method = api[methodName];
+    if (typeof method !== 'function') continue;
+
+    for (const args of argSets) {
+      try {
+        const output = await method(...args);
+
+        if (Array.isArray(output)) {
+          return output.length;
+        }
+
+        if (output && typeof output === 'object') {
+          const maybeCount = (output as { count?: unknown }).count;
+          if (typeof maybeCount === 'number') {
+            return maybeCount;
+          }
+
+          const maybeItems = (output as { items?: unknown }).items;
+          if (Array.isArray(maybeItems)) {
+            return maybeItems.length;
+          }
+        }
+      } catch (error) {
+        console.warn('[ModPulse][api] Reddit metrics method failed', {
+          methodName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
+  return undefined;
+};
+
+const fetchRedditOperationalSignals = async (subredditId: string | null) => {
+  if (!subredditId) {
+    return {
+      queueBacklog: undefined,
+      reportedContent: undefined,
+      removedToday: undefined,
+    };
+  }
+
+  const argSets = [[subredditId], []];
+
+  const [queueBacklog, reportedContent, removedToday] = await Promise.all([
+    callRedditCount(['getModerationQueue', 'getModQueue', 'getModqueue'], argSets),
+    callRedditCount(['getReportedContent', 'getReports', 'getModReports'], argSets),
+    callRedditCount(['getRemovedPosts', 'getRemovedContent'], argSets),
+  ]);
 
   return {
-    reportsToday,
-    toxicityAlerts,
     queueBacklog,
-    moderatorWorkload,
-    burnoutRisk,
+    reportedContent,
+    removedToday,
   };
 };
 
-const ensureSeedJuryCases = async (subredditId: string, username: string | null) => {
-  const existing = await fetchActiveCases(subredditId, 1);
-  if (existing.length > 0) return;
+const computeCommunityHealth = async (input: {
+  subredditId: string | null;
+  now: number;
+  pendingCases: JuryCase[];
+  resolvedCases: JuryCase[];
+  activity: Awaited<ReturnType<typeof fetchRecentActivity>>;
+}): Promise<DashboardPayload['communityHealth']> => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const windowStart = input.now - DAY_MS;
+  const activity24h = input.activity.filter((event) => event.timestamp >= windowStart);
 
-  const createdBy = username ?? 'modpulse-bot';
-  const now = Date.now();
+  const reportSignals = activity24h.filter((event) => {
+    const action = event.action.toLowerCase();
+    return (
+      action.includes('jury case opened') ||
+      action.includes('case escalated') ||
+      action.includes('spam cluster flagged') ||
+      action.includes('toxicity spike detected')
+    );
+  });
 
-  const seeds = [
-    createJuryCase({
-      subredditId,
-      postId: 't3_demo_case_1',
-      createdBy,
-      reason: 'Possible brigading / coordinated voting pattern detected.',
-      ruleCitation: 'Rule 2 — No vote manipulation',
-      contextNotes: 'Spike in new accounts + identical phrasing across comments.',
-      createdAt: now - 1000 * 60 * 22,
-      id: `seed-${subredditId}-1`,
-    }),
-    createJuryCase({
-      subredditId,
-      postId: 't3_demo_case_2',
-      createdBy,
-      reason: 'User report cluster suggests targeted harassment.',
-      ruleCitation: 'Rule 1 — Be civil',
-      contextNotes: 'Multiple reports from different users within 10 minutes.',
-      createdAt: now - 1000 * 60 * 9,
-      id: `seed-${subredditId}-2`,
-    }),
-    createJuryCase({
-      subredditId,
-      postId: 't3_demo_case_3',
-      createdBy,
-      reason: 'Potential spam: repeated external links in comments.',
-      ruleCitation: 'Rule 4 — No spam',
-      contextNotes: 'Same domain posted by 3 accounts; may be campaign.',
-      createdAt: now - 1000 * 60 * 3,
-      id: `seed-${subredditId}-3`,
-    }),
-  ];
+  const toxicitySignals = activity24h.filter((event) => {
+    const action = event.action.toLowerCase();
+    return (
+      action.includes('toxicity') ||
+      action.includes('spam cluster') ||
+      action.includes('case escalated') ||
+      action.includes('removal executed') ||
+      action.includes('post removed per jury verdict') ||
+      action.includes('emergency action: remove') ||
+      action.includes('moderator voted remove')
+    );
+  });
 
-  await Promise.all(seeds.map((juryCase) => saveNewJuryCase(juryCase)));
+  const removalsToday = activity24h.filter((event) => {
+    const action = event.action.toLowerCase();
+    return (
+      action.includes('remove') ||
+      action.includes('removal') ||
+      action.includes('post removed per jury verdict')
+    );
+  }).length;
+
+  const escalationEvents = activity24h.filter((event) => {
+    const action = event.action.toLowerCase();
+    return (
+      action.includes('case escalated') ||
+      action.includes('spam cluster flagged') ||
+      action.includes('toxicity spike detected') ||
+      action.includes('emergency action')
+    );
+  }).length;
+
+  const resolvedLast24h = input.resolvedCases.filter((juryCase) => {
+    return typeof juryCase.resolvedAt === 'number' && juryCase.resolvedAt >= windowStart;
+  }).length;
+
+  const avgResponseMinutes = (() => {
+    const allCases = [...input.pendingCases, ...input.resolvedCases];
+    const responseDurations = allCases
+      .map((juryCase) => {
+        if (!juryCase.votes.length) return null;
+        const firstVoteTs = Math.min(...juryCase.votes.map((vote) => vote.timestamp));
+        return Math.max(0, Math.round((firstVoteTs - juryCase.createdAt) / (1000 * 60)));
+      })
+      .filter((duration): duration is number => duration !== null);
+
+    if (!responseDurations.length) return null;
+    const total = responseDurations.reduce((sum, duration) => sum + duration, 0);
+    return Math.round(total / responseDurations.length);
+  })();
+
+  const redisQueueBacklog = input.pendingCases.length + Math.max(0, reportSignals.length - resolvedLast24h);
+  const redditSignals = await fetchRedditOperationalSignals(input.subredditId);
+
+  const queueBacklog = redditSignals.queueBacklog ?? redisQueueBacklog;
+  const reportsToday = redditSignals.reportedContent ?? reportSignals.length;
+  const unresolvedReports = Math.max(0, reportsToday - resolvedLast24h);
+  const moderationActions24h = activity24h.length;
+  const escalationFrequency =
+    moderationActions24h > 0 ? Math.round((escalationEvents / moderationActions24h) * 100) : 0;
+
+  const workloadScore =
+    queueBacklog * 4 +
+    input.pendingCases.length * 7 +
+    Math.min(35, moderationActions24h) +
+    escalationEvents * 8;
+  const moderatorWorkload = Math.min(100, Math.round(workloadScore));
+
+  const burnoutScore =
+    moderatorWorkload +
+    Math.min(25, unresolvedReports * 3) +
+    Math.round(escalationFrequency * 0.35);
+  const burnoutRisk: DashboardPayload['communityHealth']['burnoutRisk'] =
+    burnoutScore >= 85 ? 'high' : burnoutScore >= 45 ? 'medium' : 'low';
+
+  return {
+    reportsToday,
+    toxicityAlerts: toxicitySignals.length,
+    queueBacklog,
+    moderatorWorkload,
+    burnoutRisk,
+    unresolvedReports,
+    activeJuryCases: input.pendingCases.length,
+    moderationActions24h,
+    removalsToday: redditSignals.removedToday ?? removalsToday,
+    escalationFrequency,
+    avgResponseMinutes,
+    metricsSource:
+      redditSignals.queueBacklog !== undefined ||
+      redditSignals.reportedContent !== undefined ||
+      redditSignals.removedToday !== undefined
+        ? 'reddit'
+        : 'redis',
+  };
 };
 
 const clampPriority = (value: unknown): 'low' | 'medium' | 'high' => {
@@ -168,6 +356,7 @@ const buildAiOutput = (input: {
   ruleCitation: string;
   contextNotes: string;
   postId: string;
+  similarCases: string[];
 }): DashboardJuryCase['ai'] => {
   const text = `${input.reason} ${input.ruleCitation} ${input.contextNotes}`.toLowerCase();
 
@@ -193,19 +382,13 @@ const buildAiOutput = (input: {
   const confidence: DashboardJuryCase['ai']['confidence'] =
     category === 'Needs moderator review' ? 'low' : 'medium';
 
-  const similarCases = [
-    `Case: ${input.postId} • Pattern match: “clustered reports”`,
-    `Case: t3_prev_2 • Pattern match: “repeat phrasing”`,
-    `Case: t3_prev_3 • Pattern match: “link repetition”`,
-  ];
-
   return {
     summary:
       `Signals suggest: ${category}. ` +
       `Primary concern: ${input.reason || 'unspecified'}. ` +
       `Context: ${input.contextNotes || 'no additional notes'}.`,
     category,
-    similarCases,
+    similarCases: input.similarCases,
     suggestedAction,
     confidence,
   };
@@ -234,28 +417,66 @@ api.get('/dashboard', async (c) => {
   let activeHandover = null;
   let history: Awaited<ReturnType<typeof fetchHandoverHistory>> = [];
   let activity: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
-  let juryCases: Awaited<ReturnType<typeof fetchActiveCases>> = [];
-  let resolvedCases: Awaited<ReturnType<typeof fetchResolvedCases>> = [];
+  let activityForMetrics: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
+  let juryCases: JuryCase[] = [];
+  let resolvedCases: JuryCase[] = [];
 
   if (subredditId && redisConnected) {
-    await ensureSeedJuryCases(subredditId, username);
-    [activeHandover, history, juryCases, resolvedCases] = await Promise.all([
+    await cleanupLegacyDemoQueueEntries(subredditId);
+
+    const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw] = await Promise.all([
       fetchActiveHandover(subredditId),
       fetchHandoverHistory(subredditId, 5),
-      fetchActiveCases(subredditId, 10),
-      fetchResolvedCases(subredditId, 5),
+      fetchActiveCases(subredditId, 20),
+      fetchResolvedCases(subredditId, 20),
+      fetchRecentActivity(subredditId, 80),
     ]);
-    activity = await fetchRecentActivity(subredditId, 12);
+
+    activeHandover = activeHandoverRaw;
+    history = historyRaw;
+    juryCases = juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    resolvedCases = resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    activityForMetrics = activityRaw.filter((event) => !isDemoActivity(event));
+    activity = activityForMetrics.slice(0, 12);
   }
 
-  const seed = subredditId ? subredditId.length : 13;
-  const communityHealth = computeCommunityHealth(seed + Math.floor(now / (1000 * 60 * 10)));
+  const communityHealth = await computeCommunityHealth({
+    subredditId,
+    now,
+    pendingCases: juryCases,
+    resolvedCases,
+    activity: activityForMetrics,
+  });
 
-  const mapToDashboardCase = (juryCase: (typeof juryCases)[number]): DashboardJuryCase => {
+  const insights = generateInsights({
+    now,
+    communityHealth,
+    activity: activityForMetrics,
+    pendingCases: juryCases,
+    resolvedCases,
+  });
+
+  const renderUniverse = [...resolvedCases, ...juryCases];
+
+  const mapToDashboardCase = (juryCase: JuryCase): DashboardJuryCase => {
     const votes = countVotes(juryCase.votes);
     const ageMinutes = (now - juryCase.createdAt) / (1000 * 60);
     const priority: DashboardJuryCase['priority'] =
-      ageMinutes > 30 ? 'high' : ageMinutes > 12 ? 'medium' : 'low';
+      juryCase.status === 'resolved'
+        ? 'low'
+        : ageMinutes > 30
+          ? 'high'
+          : ageMinutes > 12
+            ? 'medium'
+            : 'low';
+
+    const similarCases = renderUniverse
+      .filter((candidate) => candidate.id !== juryCase.id)
+      .slice(0, 3)
+      .map((candidate) => {
+        const verdict = candidate.finalVerdict ? candidate.finalVerdict.toUpperCase() : 'PENDING';
+        return `Case: ${candidate.postId} • Verdict: ${verdict}`;
+      });
 
     const base: DashboardJuryCase = {
       id: juryCase.id,
@@ -274,6 +495,7 @@ api.get('/dashboard', async (c) => {
         ruleCitation: juryCase.ruleCitation,
         contextNotes: juryCase.contextNotes,
         postId: juryCase.postId,
+        similarCases: similarCases.length ? similarCases : ['No comparable historical cases yet.'],
       }),
     };
 
@@ -284,8 +506,8 @@ api.get('/dashboard', async (c) => {
     return base;
   };
 
-  const pending: DashboardJuryCase[] = juryCases.map(mapToDashboardCase);
-  const resolved: DashboardJuryCase[] = resolvedCases.map(mapToDashboardCase);
+  const pending: DashboardJuryCase[] = juryCases.slice(0, 10).map(mapToDashboardCase);
+  const resolved: DashboardJuryCase[] = resolvedCases.slice(0, 5).map(mapToDashboardCase);
 
   const payload: DashboardPayload = {
     meta: {
@@ -308,6 +530,7 @@ api.get('/dashboard', async (c) => {
       resolved,
     },
     communityHealth,
+    insights,
   };
 
   return c.json(payload, 200);
