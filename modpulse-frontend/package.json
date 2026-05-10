@@ -1,0 +1,13 @@
+{
+  "name": "modpulse-native-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/main.ts",
+  "type": "module",
+  "dependencies": {
+    "@devvit/public-api": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
