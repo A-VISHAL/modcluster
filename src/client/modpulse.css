@@ -253,6 +253,13 @@ body.modalOpen {
   gap: 14px;
 }
 
+.colLeft, .colRight {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
 .card {
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
@@ -331,9 +338,7 @@ body.modalOpen {
   grid-column: 1 / -1;
 }
 
-#handoverCard {
-  align-self: start;
-}
+
 
 .hero {
   display: grid;
@@ -616,7 +621,7 @@ body.modalOpen {
 .healthGrid {
   padding: 14px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 
@@ -1125,12 +1130,44 @@ textarea.fieldInput {
   color: rgba(255, 255, 255, 0.64);
 }
 
+.tlSummaryWrap {
+  margin-top: 12px;
+  transition: max-height 250ms ease-out;
+}
+
+.tlSummaryWrap.clamped {
+  max-height: 110px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
 .tlSummary {
-  margin-top: 8px;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 12px;
-  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tlSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tlLabel {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.tlContent {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12.5px;
+  line-height: 1.5;
   white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .modalActions {
@@ -1164,6 +1201,13 @@ textarea.fieldInput {
   .grid {
     grid-template-columns: 1fr;
   }
+  .colLeft, .colRight {
+    display: contents;
+  }
+  #handoverCard { order: 1; }
+  #juryCard { order: 2; }
+  #healthCard { order: 3; }
+  #activityCard { order: 4; }
   .hero {
     grid-template-columns: 1fr;
   }

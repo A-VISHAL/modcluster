@@ -89,73 +89,77 @@
           </div>
         </section>
 
-        <section class="card" id="handoverCard">
-          <div class="cardHeader">
-            <div>
-              <div class="cardTitle">Shift Handover</div>
-              <div class="cardSub">What the next moderator needs in 30 seconds.</div>
+        <div class="colLeft">
+          <section class="card" id="handoverCard">
+            <div class="cardHeader">
+              <div>
+                <div class="cardTitle">Shift Handover</div>
+                <div class="cardSub">What the next moderator needs in 30 seconds.</div>
+              </div>
+              <div class="chipRow">
+                <span class="chip chipSoft">Redis-backed</span>
+                <span class="chip chipSoft">Team context</span>
+              </div>
             </div>
-            <div class="chipRow">
-              <span class="chip chipSoft">Redis-backed</span>
-              <span class="chip chipSoft">Team context</span>
+            <div class="handoverBody" id="handoverBody">
+              <div class="skeleton">Loading handover…</div>
             </div>
-          </div>
-          <div class="handoverBody" id="handoverBody">
-            <div class="skeleton">Loading handover…</div>
-          </div>
-          <div class="cardFooter">
-            <button class="btn btnGhost" id="handoverHistoryBtn" type="button">View recent handovers</button>
-          </div>
-        </section>
+            <div class="cardFooter">
+              <button class="btn btnGhost" id="handoverHistoryBtn" type="button">View recent handovers</button>
+            </div>
+          </section>
 
-        <section class="card" id="juryCard">
-          <div class="cardHeader">
-            <div>
-              <div class="cardTitle">Jury Verdict Board</div>
-              <div class="cardSub">Collaborative review before high-impact actions.</div>
+          <section class="card" id="healthCard">
+            <div class="cardHeader">
+              <div>
+                <div class="cardTitle">Community Health</div>
+                <div class="cardSub">Operational indicators from live moderation activity and queue state.</div>
+              </div>
+              <div class="chipRow">
+                <span class="chip chipSoft">Signals</span>
+                <span class="chip chipSoft">Workload</span>
+              </div>
             </div>
-            <div class="chipRow">
-              <button class="btn btnGhost" id="juryCreateBtn" type="button">Flag Post</button>
-              <span class="chip chipWarn">Pending</span>
-              <span class="chip chipSoft">2-of-3 threshold</span>
+            <div class="healthGrid" id="healthGrid">
+              <div class="skeleton">Loading health…</div>
             </div>
-          </div>
-          <div class="juryList" id="juryList">
-            <div class="skeleton">Loading cases…</div>
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <section class="card" id="healthCard">
-          <div class="cardHeader">
-            <div>
-              <div class="cardTitle">Community Health</div>
-              <div class="cardSub">Operational indicators from live moderation activity and queue state.</div>
+        <div class="colRight">
+          <section class="card" id="juryCard">
+            <div class="cardHeader">
+              <div>
+                <div class="cardTitle">Jury Verdict Board</div>
+                <div class="cardSub">Collaborative review before high-impact actions.</div>
+              </div>
+              <div class="chipRow">
+                <button class="btn btnGhost" id="juryCreateBtn" type="button">Flag Post</button>
+                <span class="chip chipWarn">Pending</span>
+                <span class="chip chipSoft">2-of-3 threshold</span>
+              </div>
             </div>
-            <div class="chipRow">
-              <span class="chip chipSoft">Signals</span>
-              <span class="chip chipSoft">Workload</span>
+            <div class="juryList" id="juryList">
+              <div class="skeleton">Loading cases…</div>
             </div>
-          </div>
-          <div class="healthGrid" id="healthGrid">
-            <div class="skeleton">Loading health…</div>
-          </div>
-        </section>
+          </section>
 
-        <section class="card activityCard" id="activityCard">
-          <div class="cardHeader">
-            <div>
-              <div class="cardTitle">Recent Moderator Activity</div>
-              <div class="cardSub">Live operational events from Redis, updated as the queue moves.</div>
+          <section class="card activityCard" id="activityCard">
+            <div class="cardHeader">
+              <div>
+                <div class="cardTitle">Recent Moderator Activity</div>
+                <div class="cardSub">Live operational events from Redis, updated as the queue moves.</div>
+              </div>
+              <div class="chipRow">
+                <span class="chip chipSoft">Live feed</span>
+                <span class="chip chipSoft">Recent 12</span>
+              </div>
             </div>
-            <div class="chipRow">
-              <span class="chip chipSoft">Live feed</span>
-              <span class="chip chipSoft">Recent 12</span>
+            <div class="activityFeed" id="activityFeed">
+              <div class="skeleton">Loading activity…</div>
             </div>
-          </div>
-          <div class="activityFeed" id="activityFeed">
-            <div class="skeleton">Loading activity…</div>
-          </div>
-        </section>
+          </section>
+        </div>
       </main>
 
       <div class="toast" id="toast" role="status" aria-live="polite"></div>

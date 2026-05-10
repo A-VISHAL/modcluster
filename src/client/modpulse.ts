@@ -719,29 +719,53 @@ const renderHandoverTimeline = (payload: DashboardPayload) => {
       ${items
         .slice(0, 5)
         .map((card) => {
-          const summary = [
-            card.activeSituations ? `Active: ${card.activeSituations}` : '',
-            card.usersToWatch ? `Watch: ${card.usersToWatch}` : '',
-            card.priorityPosts ? `Priority: ${card.priorityPosts}` : '',
-            card.notes ? `Notes: ${card.notes}` : '',
-          ]
-            .filter(Boolean)
-            .join('\n');
+          const rawLength = (card.activeSituations?.length || 0) + 
+                            (card.usersToWatch?.length || 0) + 
+                            (card.priorityPosts?.length || 0) + 
+                            (card.notes?.length || 0);
 
-          const compact = summary.length > 260 ? `${summary.slice(0, 260)}…` : summary || 'No details.';
+          const isTruncated = rawLength > 180;
+
+          const sections = [
+            card.activeSituations ? `<div class="tlSection"><div class="tlLabel">Active</div><div class="tlContent">${escapeHtml(card.activeSituations)}</div></div>` : '',
+            card.usersToWatch ? `<div class="tlSection"><div class="tlLabel">Watch</div><div class="tlContent">${escapeHtml(card.usersToWatch)}</div></div>` : '',
+            card.priorityPosts ? `<div class="tlSection"><div class="tlLabel">Priority</div><div class="tlContent">${escapeHtml(card.priorityPosts)}</div></div>` : '',
+            card.notes ? `<div class="tlSection"><div class="tlLabel">Notes</div><div class="tlContent">${escapeHtml(card.notes)}</div></div>` : '',
+          ].filter(Boolean).join('');
+
+          const fullHtml = sections || '<div class="tlContent">No details.</div>';
+
           return `
           <div class="tlItem">
             <div class="tlTop">
               <div class="tlTitle">${escapeHtml(card.author)}</div>
               <div class="tlTime">${escapeHtml(fmtTime(card.timestamp))}</div>
             </div>
-            <div class="tlSummary">${escapeHtml(compact)}</div>
+            <div class="tlSummaryWrap ${isTruncated ? 'clamped' : ''}">
+              <div class="tlSummary">${fullHtml}</div>
+            </div>
+            ${isTruncated ? `<button class="btn btnGhost viewMoreBtn" type="button" style="margin-top: 8px; font-size: 11px; padding: 6px 10px;">View more</button>` : ''}
           </div>
         `;
         })
         .join('')}
     </div>
   `;
+
+  body.querySelectorAll<HTMLButtonElement>('.viewMoreBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const wrapEl = btn.parentElement?.querySelector('.tlSummaryWrap') as HTMLElement;
+      if (!wrapEl) return;
+      const isClamped = wrapEl.classList.contains('clamped');
+      if (isClamped) {
+        wrapEl.classList.remove('clamped');
+        btn.textContent = 'View less';
+      } else {
+        wrapEl.classList.add('clamped');
+        btn.textContent = 'View more';
+      }
+    });
+  });
 };
 
 const wireTopActions = () => {
