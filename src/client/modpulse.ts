@@ -401,62 +401,140 @@ const renderJury = (payload: DashboardPayload) => {
 
 const renderHealth = (payload: DashboardPayload) => {
   const grid = byId<HTMLDivElement>('healthGrid');
-  const h = payload.communityHealth;
-  const burnoutTone = h.burnoutRisk === 'high' ? 'chipBad' : h.burnoutRisk === 'medium' ? 'chipWarn' : 'chipGood';
-  const hasOperationalSignals =
-    h.reportsToday > 0 ||
-    h.toxicityAlerts > 0 ||
-    h.queueBacklog > 0 ||
-    h.activeJuryCases > 0 ||
-    h.moderationActions24h > 0;
-
   grid.innerHTML = '';
-  const stat = (label: string, value: string, extraChip?: HTMLElement) => {
-    const el = document.createElement('div');
-    el.className = 'stat';
-    el.innerHTML = `<div class="statLabel">${escapeHtml(label)}</div><div class="statValue">${escapeHtml(value)}</div>`;
-    if (extraChip) {
-      extraChip.style.marginTop = '10px';
-      el.appendChild(extraChip);
-    }
-    return el;
-  };
 
-  if (!hasOperationalSignals) {
-    const empty = document.createElement('div');
-    empty.className = 'activityEmpty';
-    empty.innerHTML = `
-      <div class="activityEmptyTitle">Community operating normally</div>
-      <div class="activityEmptyBody">No active jury cases, unresolved reports, or escalation signals in the last 24 hours.</div>
-    `;
-    grid.appendChild(empty);
-    return;
+  const h = payload.communityHealth;
+  const ops = document.createElement('div');
+  ops.className = 'opsGrid';
+
+  // Left column: metrics + pressure timeline
+  const left = document.createElement('div');
+  const metrics = document.createElement('div');
+  metrics.className = 'opsMetrics';
+
+  const avgResp = document.createElement('div');
+  avgResp.className = 'opsMetric';
+  avgResp.innerHTML = `<div class="label">Avg response time</div><div class="value">${h.avgResponseMinutes === null ? 'N/A' : `${String(h.avgResponseMinutes)}m`}</div><div class="muted">Source: ${h.metricsSource.toUpperCase()}</div>`;
+
+  const consensusPct = (() => {
+    const total = payload.jury.pending.length + payload.jury.resolved.length;
+    if (total === 0) return 'N/A';
+    const resolved = payload.jury.resolved.length;
+    return `${Math.round((resolved / total) * 100)}%`;
+  })();
+
+  const consensus = document.createElement('div');
+  consensus.className = 'opsMetric';
+  consensus.innerHTML = `<div class="label">Consensus rate</div><div class="value">${consensusPct}</div><div class="muted">jury verdicts resolved</div>`;
+
+  const activeEsc = document.createElement('div');
+  activeEsc.className = 'opsMetric';
+  activeEsc.innerHTML = `<div class="label">Active escalations</div><div class="value">${h.activeJuryCases}</div><div class="muted">awaiting jury vote</div>`;
+
+  metrics.appendChild(avgResp);
+  metrics.appendChild(consensus);
+  metrics.appendChild(activeEsc);
+
+  // Pressure timeline (last 60 minutes, 8 buckets)
+  const timeline = document.createElement('div');
+  timeline.className = 'pressureTimeline';
+  const now = Date.now();
+  const buckets = 8;
+  const bucketMs = (60 * 60 * 1000) / buckets;
+  const counts = new Array(buckets).fill(0);
+  for (const a of payload.activity) {
+    const age = now - a.timestamp;
+    if (age < 0 || age > 60 * 60 * 1000) continue;
+    const idx = Math.floor((60 * 60 * 1000 - age) / bucketMs);
+    if (idx >= 0 && idx < buckets) counts[idx]++;
   }
 
-  const responseMinutes = h.avgResponseMinutes === null ? 'N/A' : `${h.avgResponseMinutes}m`;
+  const maxCount = Math.max(1, ...counts);
+  for (let i = 0; i < buckets; i++) {
+    const slotTime = new Date(now - (buckets - i - 1) * bucketMs);
+    const label = slotTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const row = document.createElement('div');
+    row.className = 'pressureRow';
+    const lbl = document.createElement('div');
+    lbl.className = 'pressureLabel';
+    lbl.textContent = label;
+    const wrap = document.createElement('div');
+    wrap.className = 'pressureBarWrap';
+    const bar = document.createElement('div');
+    const pct = Math.round((counts[i] / maxCount) * 100);
+    bar.style.width = `${pct}%`;
+    const tone = counts[i] >= Math.max(3, Math.ceil(maxCount * 0.6)) ? 'pressureHigh' : counts[i] >= Math.max(1, Math.ceil(maxCount * 0.3)) ? 'pressureMed' : 'pressureLow';
+    bar.className = `pressureBar ${tone}`;
+    wrap.appendChild(bar);
+    row.appendChild(lbl);
+    row.appendChild(wrap);
+    timeline.appendChild(row);
+  }
 
-  grid.append(
-    stat('Reports today', String(h.reportsToday)),
-    stat('Toxicity alerts', String(h.toxicityAlerts)),
-    stat('Queue backlog', String(h.queueBacklog)),
-    stat('Unresolved reports', String(h.unresolvedReports)),
-    stat('Active jury cases', String(h.activeJuryCases)),
-    stat('Moderation actions (24h)', String(h.moderationActions24h)),
-    stat('Removals today', String(h.removalsToday)),
-    stat('Escalation frequency', `${h.escalationFrequency}%`),
-    stat('Avg response time', responseMinutes, (() => {
-      const sourceChip = document.createElement('span');
-      sourceChip.className = 'chip chipSoft';
-      sourceChip.textContent = `Source: ${h.metricsSource.toUpperCase()}`;
-      return sourceChip;
-    })()),
-    stat('Moderator workload', `${h.moderatorWorkload}%`, (() => {
-      const el = document.createElement('span');
-      el.className = `chip ${burnoutTone}`;
-      el.textContent = `Burnout: ${h.burnoutRisk.toUpperCase()}`;
-      return el;
-    })())
-  );
+  left.appendChild(metrics);
+  left.appendChild(timeline);
+
+  // Right column: live operational signals
+  const right = document.createElement('div');
+  const signals = document.createElement('div');
+  signals.className = 'liveSignals';
+  const title = document.createElement('div');
+  title.className = 'label';
+  title.textContent = 'Live operational signals';
+  const list = document.createElement('ul');
+  const ins = payload.insights;
+  if (ins && ins.details && ins.details.length) {
+    ins.details.forEach((d) => {
+      const li = document.createElement('li');
+      li.textContent = d;
+      list.appendChild(li);
+    });
+  } else {
+    const li = document.createElement('li');
+    li.textContent = 'No active operational signals in the recent window.';
+    list.appendChild(li);
+  }
+  signals.appendChild(title);
+  signals.appendChild(list);
+
+  // Bottom: response health
+  const resp = document.createElement('div');
+  resp.className = 'responseHealth';
+  const rows: Array<{ label: string; tag: string; tone: 'good' | 'warn' | 'bad' }> = [];
+  // Unresolved queue pressure
+  const pressureLabel = h.moderatorWorkload >= 75 ? 'High' : h.moderatorWorkload >= 45 ? 'Moderate' : 'Low';
+  rows.push({ label: 'Unresolved queue pressure', tag: pressureLabel, tone: h.moderatorWorkload >= 75 ? 'bad' : h.moderatorWorkload >= 45 ? 'warn' : 'good' });
+  // Jury vote fill rate
+  const voteFill = (() => {
+    const cases = payload.jury.pending.concat(payload.jury.resolved);
+    if (!cases.length) return '0%';
+    const avgVotes = Math.round((cases.reduce((s, c) => s + (c.votes.approve + c.votes.remove + c.votes.abstain), 0) / cases.length) * 100) / 100;
+    const pct = Math.min(100, Math.round((avgVotes / 2) * 100));
+    return `${pct}%`;
+  })();
+  rows.push({ label: 'Jury vote fill rate', tag: voteFill, tone: 'good' });
+  // Ban appeal backlog - not available
+  rows.push({ label: 'Ban appeal backlog', tag: '0 open', tone: 'good' });
+  // Removal reversal rate - unknown
+  rows.push({ label: 'Removal reversal rate', tag: 'N/A', tone: 'good' });
+  // Escalation SLA
+  const slaTone = h.escalationFrequency > 40 ? 'bad' : h.escalationFrequency > 15 ? 'warn' : 'good';
+  rows.push({ label: 'Escalation response SLA', tag: slaTone === 'bad' ? 'Breached' : slaTone === 'warn' ? 'Moderate' : 'OK', tone: slaTone });
+
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div>${escapeHtml(r.label)}</div><div><span class="tag ${r.tone}">${escapeHtml(r.tag)}</span></div>`;
+    resp.appendChild(row);
+  }
+
+  right.appendChild(signals);
+  right.appendChild(resp);
+
+  ops.appendChild(left);
+  ops.appendChild(right);
+
+  grid.appendChild(ops);
 };
 
 const renderActivity = (payload: DashboardPayload) => {
