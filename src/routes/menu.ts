@@ -101,7 +101,7 @@ menu.post('/handover-view', async (c) => {
   await c.req.json<MenuItemRequest>();
   const subId = context.subredditId || 'global';
   const active = await fetchActiveHandover(subId);
-  const history = await fetchHandoverHistory(subId, 5);
+  const history = await fetchHandoverHistory(subId, 20);
 
   if (!active) {
     return c.json<UiResponse>({ showToast: 'No active handover for this subreddit.' }, 200);

@@ -426,7 +426,7 @@ api.get('/dashboard', async (c) => {
 
     const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw] = await Promise.all([
       fetchActiveHandover(subredditId),
-      fetchHandoverHistory(subredditId, 5),
+      fetchHandoverHistory(subredditId, 20),
       fetchActiveCases(subredditId, 20),
       fetchResolvedCases(subredditId, 20),
       fetchRecentActivity(subredditId, 80),

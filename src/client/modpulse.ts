@@ -714,10 +714,13 @@ const renderHandoverTimeline = (payload: DashboardPayload) => {
     return;
   }
 
+  const initialCount = 5;
+  const showAll = body.dataset.showAll === 'true';
+  const displayItems = showAll ? items : items.slice(0, initialCount);
+
   body.innerHTML = `
     <div class="timeline">
-      ${items
-        .slice(0, 5)
+      ${displayItems
         .map((card) => {
           const rawLength = (card.activeSituations?.length || 0) + 
                             (card.usersToWatch?.length || 0) + 
@@ -749,8 +752,19 @@ const renderHandoverTimeline = (payload: DashboardPayload) => {
         `;
         })
         .join('')}
+      ${items.length > initialCount ? `<div style="text-align: center; padding: 14px 0; border-top: 1px solid rgba(255,255,255,0.08); margin-top: 12px;"><button class="btn btnGhost" id="toggleHistoryBtn" type="button" style="font-size: 12px; padding: 8px 16px;">${showAll ? 'Show Less' : `View More (${items.length - initialCount} more)`}</button></div>` : ''}
     </div>
   `;
+
+  if (items.length > initialCount) {
+    const toggleBtn = body.querySelector<HTMLButtonElement>('#toggleHistoryBtn');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        body.dataset.showAll = body.dataset.showAll === 'true' ? 'false' : 'true';
+        renderHandoverTimeline(payload);
+      });
+    }
+  }
 
   body.querySelectorAll<HTMLButtonElement>('.viewMoreBtn').forEach(btn => {
     btn.addEventListener('click', () => {
