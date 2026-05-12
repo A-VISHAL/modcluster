@@ -46,7 +46,7 @@ export const juryHistoryKey = (subredditId: string) =>
   `jury:${subredditId}:history`;
 export const juryCaseKey = (caseId: string) => `jurycase:${caseId}`;
 
-const JURY_THRESHOLD = 2;
+const JURY_THRESHOLD = 1;
 const MAX_CASES_PER_QUEUE = 100;
 
 const safeIdPart = (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, '-');
