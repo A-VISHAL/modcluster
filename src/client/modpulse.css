@@ -609,13 +609,13 @@ body.modalOpen {
 }
 
 .btnPrimary {
-  background: linear-gradient(135deg, rgba(124, 92, 255, 0.95), rgba(45, 212, 255, 0.65));
-  border-color: rgba(124, 92, 255, 0.4);
-  box-shadow: 0 8px 24px rgba(124, 92, 255, 0.2);
+  background: linear-gradient(135deg, #ff4500, #ff581a);
+  border-color: rgba(255, 69, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(255, 69, 0, 0.2);
 }
 
 .btnPrimary:hover {
-  box-shadow: 0 12px 32px rgba(124, 92, 255, 0.3);
+  box-shadow: 0 12px 32px rgba(255, 69, 0, 0.3);
   transform: translateY(-2px);
 }
 
@@ -1029,7 +1029,7 @@ body.modalOpen {
   max-height: min(85vh, calc(100vh - 40px));
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  background: linear-gradient(180deg, rgba(16, 22, 45, 1), rgba(12, 16, 34, 1));
+  background: linear-gradient(180deg, var(--bg1), var(--bg0));
   box-shadow: var(--shadow);
   overflow: hidden;
   display: flex;
@@ -1141,9 +1141,9 @@ textarea.fieldInput {
 
 .fieldInput:focus {
   outline: none;
-  border-color: rgba(45, 212, 255, 0.50);
+  border-color: rgba(255, 69, 0, 0.50);
   background: rgba(255, 255, 255, 0.07);
-  box-shadow: 0 0 0 3px rgba(45, 212, 255, 0.15);
+  box-shadow: 0 0 0 3px rgba(255, 69, 0, 0.15);
 }
 
 .fieldInput:hover:not(:focus) {
@@ -1162,7 +1162,7 @@ select.fieldInput {
 }
 
 select.fieldInput option {
-  background: #0b1020;
+  background: var(--bg1);
   color: rgba(255, 255, 255, 0.92);
 }
 
@@ -1226,7 +1226,7 @@ select.fieldInput option {
 .progressFill {
   height: 100%;
   width: 0%;
-  background: linear-gradient(90deg, rgba(67, 243, 197, 0.7), rgba(124, 92, 255, 0.7));
+  background: linear-gradient(90deg, #ff4500, #ff581a);
   transition: width 220ms ease;
 }
 
