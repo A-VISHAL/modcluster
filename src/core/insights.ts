@@ -145,4 +145,4 @@ export function computeSystemLoad(data: {
   };
 }
 
-export default generateInsights;
+
