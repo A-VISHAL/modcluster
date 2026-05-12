@@ -25,7 +25,7 @@ import {
   getAuditContext,
 } from '../core/security';
 import { executeImmediateAction } from '../core/moderation';
-import { generateInsights } from '../core/insights';
+import { generateInsights, computeSystemLoad, type SystemLoad } from '../core/insights';
 
 export const api = new Hono();
 
@@ -99,6 +99,7 @@ type DashboardPayload = {
     headline: string;
     details: string[];
   };
+  systemLoad: SystemLoad;
 };
 
 const requireSubredditId = (): string => {
@@ -448,6 +449,13 @@ api.get('/dashboard', async (c) => {
     activity: activityForMetrics,
   });
 
+  const systemLoad = computeSystemLoad({
+    activeJuryCases: communityHealth.activeJuryCases,
+    queueBacklog: communityHealth.queueBacklog,
+    reportsToday: communityHealth.reportsToday,
+    toxicityAlerts: communityHealth.toxicityAlerts,
+  });
+
   const insights = generateInsights({
     now,
     communityHealth,
@@ -531,6 +539,7 @@ api.get('/dashboard', async (c) => {
     },
     communityHealth,
     insights,
+    systemLoad,
   };
 
   return c.json(payload, 200);
