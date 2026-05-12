@@ -13,11 +13,6 @@ export type Insight = {
   details: string[];
 };
 
-export type SystemLoad = {
-  level: 'calm' | 'low' | 'moderate' | 'high';
-  score: number;
-};
-
 type Input = {
   now: number;
   communityHealth: {
@@ -116,33 +111,4 @@ export const generateInsights = (input: Input): Insight => {
   return { headline, details: limited };
 };
 
-export function computeSystemLoad(data: {
-  activeJuryCases: number;
-  queueBacklog: number;
-  reportsToday: number;
-  toxicityAlerts: number;
-}): SystemLoad {
-  const {
-    activeJuryCases = 0,
-    queueBacklog = 0,
-    reportsToday = 0,
-    toxicityAlerts = 0,
-  } = data;
-
-  const score =
-    activeJuryCases * 3 + queueBacklog * 2 + reportsToday * 1 + toxicityAlerts * 2;
-
-  let level: 'calm' | 'low' | 'moderate' | 'high' = 'calm';
-
-  if (score === 0) level = 'calm';
-  else if (score <= 5) level = 'low';
-  else if (score <= 10) level = 'moderate';
-  else level = 'high';
-
-  return {
-    level,
-    score,
-  };
-}
-
-
+export default generateInsights;

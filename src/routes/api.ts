@@ -25,7 +25,7 @@ import {
   getAuditContext,
 } from '../core/security';
 import { executeImmediateAction } from '../core/moderation';
-import { generateInsights, computeSystemLoad, type SystemLoad } from '../core/insights';
+import { generateInsights } from '../core/insights';
 
 export const api = new Hono();
 
@@ -99,7 +99,6 @@ type DashboardPayload = {
     headline: string;
     details: string[];
   };
-  systemLoad: SystemLoad;
 };
 
 const requireSubredditId = (): string => {
@@ -400,157 +399,141 @@ api.get('/dashboard', async (c) => {
   const subredditId = context.subredditId ?? null;
   const username = context.username ?? null;
 
-  console.log('[ModPulse][api] dashboard refresh requested', {
+  console.log('[ModPulse][api] dashboard refresh', {
     subredditId,
     username,
     now,
   });
 
+  let redisConnected = false;
   try {
-    let redisConnected = false;
-    try {
-      // Simple connectivity check. If Redis is down/misconfigured, this will throw.
-      await webRedis.set('modpulse:healthcheck', String(now));
-      redisConnected = true;
-    } catch (err) {
-      console.error('[ModPulse][api] Redis connectivity check failed', err);
-    }
+    // Simple connectivity check. If Redis is down/misconfigured, this will throw.
+    await webRedis.set('modpulse:healthcheck', String(now));
+    redisConnected = true;
+  } catch (err) {
+    console.error('Redis connectivity check failed', err);
+  }
 
-    let activeHandover = null;
-    let history: Awaited<ReturnType<typeof fetchHandoverHistory>> = [];
-    let activity: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
-    let activityForMetrics: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
-    let juryCases: JuryCase[] = [];
-    let resolvedCases: JuryCase[] = [];
+  let activeHandover = null;
+  let history: Awaited<ReturnType<typeof fetchHandoverHistory>> = [];
+  let activity: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
+  let activityForMetrics: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
+  let juryCases: JuryCase[] = [];
+  let resolvedCases: JuryCase[] = [];
 
-    if (subredditId && redisConnected) {
-      await cleanupLegacyDemoQueueEntries(subredditId);
+  if (subredditId && redisConnected) {
+    await cleanupLegacyDemoQueueEntries(subredditId);
 
-      const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw] = await Promise.all([
-        fetchActiveHandover(subredditId),
-        fetchHandoverHistory(subredditId, 20),
-        fetchActiveCases(subredditId, 20),
-        fetchResolvedCases(subredditId, 20),
-        fetchRecentActivity(subredditId, 80),
-      ]);
+    const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw] = await Promise.all([
+      fetchActiveHandover(subredditId),
+      fetchHandoverHistory(subredditId, 20),
+      fetchActiveCases(subredditId, 20),
+      fetchResolvedCases(subredditId, 20),
+      fetchRecentActivity(subredditId, 80),
+    ]);
 
-      activeHandover = activeHandoverRaw;
-      history = historyRaw;
-      juryCases = juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
-      resolvedCases = resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
-      activityForMetrics = activityRaw.filter((event) => !isDemoActivity(event));
-      activity = activityForMetrics.slice(0, 12);
-    }
+    activeHandover = activeHandoverRaw;
+    history = historyRaw;
+    juryCases = juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    resolvedCases = resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    activityForMetrics = activityRaw.filter((event) => !isDemoActivity(event));
+    activity = activityForMetrics.slice(0, 12);
+  }
 
-    const communityHealth = await computeCommunityHealth({
-      subredditId,
-      now,
-      pendingCases: juryCases,
-      resolvedCases,
-      activity: activityForMetrics,
-    });
+  const communityHealth = await computeCommunityHealth({
+    subredditId,
+    now,
+    pendingCases: juryCases,
+    resolvedCases,
+    activity: activityForMetrics,
+  });
 
-    const systemLoad = computeSystemLoad({
-      activeJuryCases: communityHealth.activeJuryCases,
-      queueBacklog: communityHealth.queueBacklog,
-      reportsToday: communityHealth.reportsToday,
-      toxicityAlerts: communityHealth.toxicityAlerts,
-    });
+  const insights = generateInsights({
+    now,
+    communityHealth,
+    activity: activityForMetrics,
+    pendingCases: juryCases,
+    resolvedCases,
+  });
 
-    const insights = generateInsights({
-      now,
-      communityHealth,
-      activity: activityForMetrics,
-      pendingCases: juryCases,
-      resolvedCases,
-    });
+  const renderUniverse = [...resolvedCases, ...juryCases];
 
-    const renderUniverse = [...resolvedCases, ...juryCases];
+  const mapToDashboardCase = (juryCase: JuryCase): DashboardJuryCase => {
+    const votes = countVotes(juryCase.votes);
+    const ageMinutes = (now - juryCase.createdAt) / (1000 * 60);
+    const priority: DashboardJuryCase['priority'] =
+      juryCase.status === 'resolved'
+        ? 'low'
+        : ageMinutes > 30
+          ? 'high'
+          : ageMinutes > 12
+            ? 'medium'
+            : 'low';
 
-    const mapToDashboardCase = (juryCase: JuryCase): DashboardJuryCase => {
-      const votes = countVotes(juryCase.votes);
-      const ageMinutes = (now - juryCase.createdAt) / (1000 * 60);
-      const priority: DashboardJuryCase['priority'] =
-        juryCase.status === 'resolved'
-          ? 'low'
-          : ageMinutes > 30
-            ? 'high'
-            : ageMinutes > 12
-              ? 'medium'
-              : 'low';
+    const similarCases = renderUniverse
+      .filter((candidate) => candidate.id !== juryCase.id)
+      .slice(0, 3)
+      .map((candidate) => {
+        const verdict = candidate.finalVerdict ? candidate.finalVerdict.toUpperCase() : 'PENDING';
+        return `Case: ${candidate.postId} • Verdict: ${verdict}`;
+      });
 
-      const similarCases = renderUniverse
-        .filter((candidate) => candidate.id !== juryCase.id)
-        .slice(0, 3)
-        .map((candidate) => {
-          const verdict = candidate.finalVerdict ? candidate.finalVerdict.toUpperCase() : 'PENDING';
-          return `Case: ${candidate.postId} • Verdict: ${verdict}`;
-        });
-
-      const base: DashboardJuryCase = {
-        id: juryCase.id,
-        postId: juryCase.postId,
-        createdAt: juryCase.createdAt,
-        createdBy: juryCase.createdBy,
+    const base: DashboardJuryCase = {
+      id: juryCase.id,
+      postId: juryCase.postId,
+      createdAt: juryCase.createdAt,
+      createdBy: juryCase.createdBy,
+      reason: juryCase.reason,
+      ruleCitation: juryCase.ruleCitation,
+      contextNotes: juryCase.contextNotes,
+      votes,
+      finalVerdict: juryCase.finalVerdict,
+      status: juryCase.status,
+      priority,
+      ai: buildAiOutput({
         reason: juryCase.reason,
         ruleCitation: juryCase.ruleCitation,
         contextNotes: juryCase.contextNotes,
-        votes,
-        finalVerdict: juryCase.finalVerdict,
-        status: juryCase.status,
-        priority,
-        ai: buildAiOutput({
-          reason: juryCase.reason,
-          ruleCitation: juryCase.ruleCitation,
-          contextNotes: juryCase.contextNotes,
-          postId: juryCase.postId,
-          similarCases: similarCases.length ? similarCases : ['No comparable historical cases yet.'],
-        }),
-      };
-
-      if (typeof juryCase.resolvedAt === 'number') {
-        base.resolvedAt = juryCase.resolvedAt;
-      }
-
-      return base;
+        postId: juryCase.postId,
+        similarCases: similarCases.length ? similarCases : ['No comparable historical cases yet.'],
+      }),
     };
 
-    const pending: DashboardJuryCase[] = juryCases.slice(0, 10).map(mapToDashboardCase);
-    const resolved: DashboardJuryCase[] = resolvedCases.slice(0, 5).map(mapToDashboardCase);
+    if (typeof juryCase.resolvedAt === 'number') {
+      base.resolvedAt = juryCase.resolvedAt;
+    }
 
-    const payload: DashboardPayload = {
-      meta: {
-        subredditId,
-        username,
-        now,
-      },
-      status: {
-        redisConnected,
-        liveModeration: true,
-        jurySystemActive: true,
-      },
-      handover: {
-        active: activeHandover,
-        history,
-      },
-      activity,
-      jury: {
-        pending,
-        resolved,
-      },
-      communityHealth,
-      insights,
-      systemLoad,
-    };
+    return base;
+  };
 
-    return c.json(payload, 200);
-  } catch (error) {
-    console.error('[ModPulse][api] Dashboard internal error', error);
-    return c.json({
-      error: 'Failed to compute dashboard metrics',
-      details: error instanceof Error ? error.message : String(error)
-    }, 500);
-  }
+  const pending: DashboardJuryCase[] = juryCases.slice(0, 10).map(mapToDashboardCase);
+  const resolved: DashboardJuryCase[] = resolvedCases.slice(0, 5).map(mapToDashboardCase);
+
+  const payload: DashboardPayload = {
+    meta: {
+      subredditId,
+      username,
+      now,
+    },
+    status: {
+      redisConnected,
+      liveModeration: true,
+      jurySystemActive: true,
+    },
+    handover: {
+      active: activeHandover,
+      history,
+    },
+    activity,
+    jury: {
+      pending,
+      resolved,
+    },
+    communityHealth,
+    insights,
+  };
+
+  return c.json(payload, 200);
 });
 
 api.post('/handover', async (c) => {

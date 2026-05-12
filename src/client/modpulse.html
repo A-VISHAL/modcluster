@@ -52,42 +52,11 @@
         <section class="card heroCard">
           <div class="hero">
             <div class="heroLeft">
-              <div class="heroKicker">Shift Overview</div>
-              <div class="commandHeader">
-                <div class="headlineGroup">
-                  <div class="heroTitle" id="commandHeadline">All clear</div>
-                  <div class="heroSubtext" id="commandSubtext">No action needed</div>
-                  <div class="heroGuidance" id="heroGuidance">Monitor activity or create a handover for the next moderator</div>
-                </div>
-                <div class="systemStatus" id="systemStatus">
-                  <span class="statusDot dotGood"></span>
-                  <span class="statusText">All Clear</span>
-                </div>
+              <div class="heroKicker">Operations Console</div>
+              <div class="heroTitle">Shift-aware moderation, built for teams.</div>
+              <div class="heroBody">
+                A fast dashboard for handovers, jury reviews, and community health—backed by Redis and designed for real moderator workflows.
               </div>
-
-              <div class="commandSummary" id="commandSummary">
-                <div class="summaryBlock">
-                  <div class="summaryLabel">Jury Board</div>
-                  <div class="summaryValue" id="sJury">0 to review</div>
-                  <div class="summaryHint" id="hJury">Posts flagged for team review</div>
-                </div>
-                <div class="summaryBlock">
-                  <div class="summaryLabel">Queue Load</div>
-                  <div class="summaryValue" id="sQueue">Stable</div>
-                  <div class="summaryHint">Current moderation queue load</div>
-                </div>
-                <div class="summaryBlock">
-                  <div class="summaryLabel">Flagged Users</div>
-                  <div class="summaryValue" id="sWatch">0 Users</div>
-                  <div class="summaryHint">Users flagged across shifts</div>
-                </div>
-                <div class="summaryBlock">
-                  <div class="summaryLabel">Last Shift Note</div>
-                  <div class="summaryValue" id="sHandover">—</div>
-                  <div class="summaryHint">Latest notes shared between moderators</div>
-                </div>
-              </div>
-
               <div class="heroActions">
                 <button class="btn btnPrimary" id="handoverOpenBtn" type="button">Create Handover</button>
                 <button class="btn btnSoft" id="handoverViewBtn" type="button">View Latest Handover</button>
@@ -96,15 +65,15 @@
             <div class="heroRight">
               <div class="metricGrid">
                 <div class="metric">
-                  <div class="metricLabel">Posts to Review</div>
+                  <div class="metricLabel">Queue backlog</div>
                   <div class="metricValue" id="mQueue">—</div>
                 </div>
                 <div class="metric">
-                  <div class="metricLabel">Reports</div>
+                  <div class="metricLabel">Reports today</div>
                   <div class="metricValue" id="mReports">—</div>
                 </div>
                 <div class="metric">
-                  <div class="metricLabel">Risk Alerts</div>
+                  <div class="metricLabel">Toxicity alerts</div>
                   <div class="metricValue" id="mToxic">—</div>
                 </div>
                 <div class="metric">
@@ -113,14 +82,8 @@
                 </div>
               </div>
               <div class="sparkWrap">
-                <div class="sparkTop">
-                  <div class="sparkTitle">Activity Level</div>
-                  <div class="sparkStatus" id="loadStatus">Calm</div>
-                </div>
-                <div class="spark" aria-hidden="true">
-                  <div class="sparkFill" id="loadFill"></div>
-                </div>
-                <div class="sparkDetail" id="loadDetail">No significant moderation activity</div>
+                <div class="sparkTitle">Live moderation signal</div>
+                <div class="spark" aria-hidden="true"></div>
               </div>
             </div>
           </div>

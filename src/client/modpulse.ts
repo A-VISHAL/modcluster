@@ -100,10 +100,6 @@ type DashboardPayload = {
     headline: string;
     details: string[];
   };
-  systemLoad: {
-    level: 'calm' | 'low' | 'moderate' | 'high';
-    score: number;
-  };
 };
 
 // ============================================================================
@@ -147,38 +143,12 @@ const disableDevMode = () => {
 
 const byId = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const ui = {
-  statusRow: () => byId<HTMLDivElement>('statusRow'),
-  metaPill: () => byId<HTMLDivElement>('metaPill'),
-  mQueue: () => byId<HTMLDivElement>('mQueue'),
-  mReports: () => byId<HTMLDivElement>('mReports'),
-  mToxic: () => byId<HTMLDivElement>('mToxic'),
-  mBurnout: () => byId<HTMLDivElement>('mBurnout'),
-  heroTitle: () => document.querySelector<HTMLDivElement>('.heroTitle'),
-  heroBody: () => document.querySelector<HTMLDivElement>('.heroBody'),
-  handoverBody: () => byId<HTMLDivElement>('handoverBody'),
-  juryList: () => byId<HTMLDivElement>('juryList'),
-  healthGrid: () => byId<HTMLDivElement>('healthGrid'),
-  activityFeed: () => byId<HTMLDivElement>('activityFeed'),
-  toast: () => byId<HTMLDivElement>('toast'),
-  devModeIndicator: () => byId<HTMLDivElement>('devModeIndicator'),
-  sJury: () => byId<HTMLDivElement>('sJury'),
-  sQueue: () => byId<HTMLDivElement>('sQueue'),
-  sWatch: () => byId<HTMLDivElement>('sWatch'),
-  sHandover: () => byId<HTMLDivElement>('sHandover'),
-  systemStatus: () => byId<HTMLDivElement>('systemStatus'),
-  commandSubtext: () => byId<HTMLDivElement>('commandSubtext'),
-  loadStatus: () => byId<HTMLDivElement>('loadStatus'),
-  loadFill: () => byId<HTMLDivElement>('loadFill'),
-  loadDetail: () => byId<HTMLDivElement>('loadDetail'),
-  hJury: () => byId<HTMLDivElement>('hJury'),
-};
+const toastEl = byId<HTMLDivElement>('toast');
 
 const showToast = (message: string) => {
-  const el = ui.toast();
-  el.textContent = message;
-  el.classList.add('show');
-  window.setTimeout(() => el.classList.remove('show'), 2200);
+  toastEl.textContent = message;
+  toastEl.classList.add('show');
+  window.setTimeout(() => toastEl.classList.remove('show'), 2200);
 };
 
 const chip = (label: string, tone: 'good' | 'warn' | 'bad' | 'soft') => {
@@ -229,39 +199,54 @@ const escapeHtml = (value: string) =>
     }
   });
 
-/**
- * Renders the topbar header information (Status chips and Meta pill)
- */
-const renderHeader = (payload: DashboardPayload) => {
-  const row = ui.statusRow();
+const renderStatus = (payload: DashboardPayload) => {
+  const row = byId<HTMLDivElement>('statusRow');
   row.innerHTML = '';
+
   row.append(
     chip(payload.status.redisConnected ? 'Redis Connected' : 'Redis Offline', payload.status.redisConnected ? 'good' : 'bad'),
     chip(payload.status.liveModeration ? 'Live Moderation' : 'Paused', payload.status.liveModeration ? 'good' : 'warn'),
     chip(payload.status.jurySystemActive ? 'Jury System Active' : 'Jury Disabled', payload.status.jurySystemActive ? 'good' : 'warn')
   );
+};
 
-  const meta = ui.metaPill();
+const renderMeta = (payload: DashboardPayload) => {
+  const meta = byId<HTMLDivElement>('metaPill');
   const who = payload.meta.username ? `u/${payload.meta.username}` : 'unknown user';
   const where = payload.meta.subredditId ? payload.meta.subredditId : 'unknown subreddit';
   meta.textContent = `${who} • ${where} • ${new Date(payload.meta.now).toLocaleTimeString()}`;
 };
 
-/**
- * Renders the Hero card metrics in the Operations Console
- */
-const renderCommandCenter = (payload: DashboardPayload) => {
-  ui.mQueue().textContent = String(payload.communityHealth.queueBacklog);
-  ui.mReports().textContent = String(payload.communityHealth.reportsToday);
-  ui.mToxic().textContent = String(payload.communityHealth.toxicityAlerts);
-  ui.mBurnout().textContent = payload.communityHealth.burnoutRisk.toUpperCase();
+const renderHeroMetrics = (payload: DashboardPayload) => {
+  byId<HTMLDivElement>('mQueue').textContent = String(payload.communityHealth.queueBacklog);
+  byId<HTMLDivElement>('mReports').textContent = String(payload.communityHealth.reportsToday);
+  byId<HTMLDivElement>('mToxic').textContent = String(payload.communityHealth.toxicityAlerts);
+  byId<HTMLDivElement>('mBurnout').textContent = payload.communityHealth.burnoutRisk.toUpperCase();
 };
 
-/**
- * Renders the latest handover context from Redis
- */
-const renderHandoverSection = (payload: DashboardPayload) => {
-  const body = ui.handoverBody();
+const renderHeroSummary = (payload: DashboardPayload) => {
+  const titleEl = document.querySelector<HTMLDivElement>('.heroTitle');
+  const bodyEl = document.querySelector<HTMLDivElement>('.heroBody');
+  if (!titleEl || !bodyEl) return;
+
+  const ins = payload.insights;
+  titleEl.textContent = ins.headline || 'Operational update';
+
+  if (!ins.details || ins.details.length === 0) {
+    bodyEl.textContent = 'No significant moderation escalations detected in the recent operational window.';
+    return;
+  }
+
+  const bullets = ins.details.map((d) => `<li>${escapeHtml(d)}</li>`).join('');
+  bodyEl.innerHTML = `
+    <ul class="heroInsights">
+      ${bullets}
+    </ul>
+  `;
+};
+
+const renderHandover = (payload: DashboardPayload) => {
+  const body = byId<HTMLDivElement>('handoverBody');
   const active = payload.handover.active;
 
   if (!active) {
@@ -294,11 +279,8 @@ const renderHandoverSection = (payload: DashboardPayload) => {
   `;
 };
 
-/**
- * Renders the Jury Verdict Board with active and resolved cases
- */
-const renderJuryBoard = (payload: DashboardPayload) => {
-  const list = ui.juryList();
+const renderJury = (payload: DashboardPayload) => {
+  const list = byId<HTMLDivElement>('juryList');
   const cases = payload.jury.pending;
   const resolved = payload.jury.resolved;
 
@@ -417,11 +399,146 @@ const renderJuryBoard = (payload: DashboardPayload) => {
   });
 };
 
-/**
- * Renders the Activity Feed (recent moderation actions)
- */
-const renderActivityFeed = (payload: DashboardPayload) => {
-  const feed = ui.activityFeed();
+const renderHealth = (payload: DashboardPayload) => {
+  const grid = byId<HTMLDivElement>('healthGrid');
+  grid.innerHTML = '';
+
+  const h = payload.communityHealth;
+  const ops = document.createElement('div');
+  ops.className = 'opsGrid';
+
+  // Left column: metrics + pressure timeline
+  const left = document.createElement('div');
+  const metrics = document.createElement('div');
+  metrics.className = 'opsMetrics';
+
+  const avgResp = document.createElement('div');
+  avgResp.className = 'opsMetric';
+  avgResp.innerHTML = `<div class="label">Avg response time</div><div class="value">${h.avgResponseMinutes === null ? 'N/A' : `${String(h.avgResponseMinutes)}m`}</div><div class="muted">Source: ${h.metricsSource.toUpperCase()}</div>`;
+
+  const consensusPct = (() => {
+    const total = payload.jury.pending.length + payload.jury.resolved.length;
+    if (total === 0) return 'N/A';
+    const resolved = payload.jury.resolved.length;
+    return `${Math.round((resolved / total) * 100)}%`;
+  })();
+
+  const consensus = document.createElement('div');
+  consensus.className = 'opsMetric';
+  consensus.innerHTML = `<div class="label">Consensus rate</div><div class="value">${consensusPct}</div><div class="muted">jury verdicts resolved</div>`;
+
+  const activeEsc = document.createElement('div');
+  activeEsc.className = 'opsMetric';
+  activeEsc.innerHTML = `<div class="label">Active escalations</div><div class="value">${h.activeJuryCases}</div><div class="muted">awaiting jury vote</div>`;
+
+  metrics.appendChild(avgResp);
+  metrics.appendChild(consensus);
+  metrics.appendChild(activeEsc);
+
+  // Pressure timeline (last 60 minutes, 8 buckets)
+  const timeline = document.createElement('div');
+  timeline.className = 'pressureTimeline';
+  const now = Date.now();
+  const buckets = 8;
+  const bucketMs = (60 * 60 * 1000) / buckets;
+  const counts = new Array(buckets).fill(0);
+  for (const a of payload.activity) {
+    const age = now - a.timestamp;
+    if (age < 0 || age > 60 * 60 * 1000) continue;
+    const idx = Math.floor((60 * 60 * 1000 - age) / bucketMs);
+    if (idx >= 0 && idx < buckets) counts[idx]++;
+  }
+
+  const maxCount = Math.max(1, ...counts);
+  for (let i = 0; i < buckets; i++) {
+    const slotTime = new Date(now - (buckets - i - 1) * bucketMs);
+    const label = slotTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const row = document.createElement('div');
+    row.className = 'pressureRow';
+    const lbl = document.createElement('div');
+    lbl.className = 'pressureLabel';
+    lbl.textContent = label;
+    const wrap = document.createElement('div');
+    wrap.className = 'pressureBarWrap';
+    const bar = document.createElement('div');
+    const pct = Math.round((counts[i] / maxCount) * 100);
+    bar.style.width = `${pct}%`;
+    const tone = counts[i] >= Math.max(3, Math.ceil(maxCount * 0.6)) ? 'pressureHigh' : counts[i] >= Math.max(1, Math.ceil(maxCount * 0.3)) ? 'pressureMed' : 'pressureLow';
+    bar.className = `pressureBar ${tone}`;
+    wrap.appendChild(bar);
+    row.appendChild(lbl);
+    row.appendChild(wrap);
+    timeline.appendChild(row);
+  }
+
+  left.appendChild(metrics);
+  left.appendChild(timeline);
+
+  // Right column: live operational signals
+  const right = document.createElement('div');
+  const signals = document.createElement('div');
+  signals.className = 'liveSignals';
+  const title = document.createElement('div');
+  title.className = 'label';
+  title.textContent = 'Live operational signals';
+  const list = document.createElement('ul');
+  const ins = payload.insights;
+  if (ins && ins.details && ins.details.length) {
+    ins.details.forEach((d) => {
+      const li = document.createElement('li');
+      li.textContent = d;
+      list.appendChild(li);
+    });
+  } else {
+    const li = document.createElement('li');
+    li.textContent = 'No active operational signals in the recent window.';
+    list.appendChild(li);
+  }
+  signals.appendChild(title);
+  signals.appendChild(list);
+
+  // Bottom: response health
+  const resp = document.createElement('div');
+  resp.className = 'responseHealth';
+  const rows: Array<{ label: string; tag: string; tone: 'good' | 'warn' | 'bad' }> = [];
+  // Unresolved queue pressure
+  const pressureLabel = h.moderatorWorkload >= 75 ? 'High' : h.moderatorWorkload >= 45 ? 'Moderate' : 'Low';
+  rows.push({ label: 'Unresolved queue pressure', tag: pressureLabel, tone: h.moderatorWorkload >= 75 ? 'bad' : h.moderatorWorkload >= 45 ? 'warn' : 'good' });
+  // Jury vote fill rate
+  const voteFill = (() => {
+    const cases = payload.jury.pending.concat(payload.jury.resolved);
+    if (!cases.length) return '0%';
+    const avgVotes = Math.round((cases.reduce((s, c) => s + (c.votes.approve + c.votes.remove + c.votes.abstain), 0) / cases.length) * 100) / 100;
+    const pct = Math.min(100, Math.round((avgVotes / 2) * 100));
+    return `${pct}%`;
+  })();
+  rows.push({ label: 'Jury vote fill rate', tag: voteFill, tone: 'good' });
+  // Ban appeal backlog - not available
+  rows.push({ label: 'Ban appeal backlog', tag: '0 open', tone: 'good' });
+  // Removal reversal rate - unknown
+  rows.push({ label: 'Removal reversal rate', tag: 'N/A', tone: 'good' });
+  // Escalation SLA
+  const slaTone = h.escalationFrequency > 40 ? 'bad' : h.escalationFrequency > 15 ? 'warn' : 'good';
+  rows.push({ label: 'Escalation response SLA', tag: slaTone === 'bad' ? 'Breached' : slaTone === 'warn' ? 'Moderate' : 'OK', tone: slaTone });
+
+  for (const r of rows) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `<div>${escapeHtml(r.label)}</div><div><span class="tag ${r.tone}">${escapeHtml(r.tag)}</span></div>`;
+    resp.appendChild(row);
+  }
+
+  right.appendChild(signals);
+  right.appendChild(resp);
+
+  ops.appendChild(left);
+  ops.appendChild(right);
+
+  grid.appendChild(ops);
+};
+
+const renderActivity = (payload: DashboardPayload) => {
+  const feed = byId<HTMLDivElement>('activityFeed');
   const items = payload.activity;
 
   if (!items.length) {
@@ -462,304 +579,6 @@ const renderActivityFeed = (payload: DashboardPayload) => {
       `;
     })
     .join('');
-};
-
-/**
- * Renders operational insights (Command Summary and Community Health grid)
- */
-const renderInsights = (payload: DashboardPayload) => {
-  // 1. Command Summary State Calculation
-  const juryCount = payload.jury.pending.length;
-  const workload = payload.communityHealth.moderatorWorkload;
-  const watchText = payload.handover.active?.usersToWatch || '';
-  const watchCount = watchText.split(',').map(s => s.trim()).filter(Boolean).length;
-
-  let priorityState: 'STABLE' | 'ATTENTION' | 'CRITICAL' = 'STABLE';
-  if (workload >= 75 || juryCount >= 5) priorityState = 'CRITICAL';
-  else if (juryCount > 0 || workload >= 40 || watchCount > 0) priorityState = 'ATTENTION';
-
-  // 2. Headline & Guidance
-  const headlineEl = ui.heroTitle();
-  const subtextEl = ui.commandSubtext();
-  if (headlineEl && subtextEl) {
-    if (priorityState === 'CRITICAL') {
-      headlineEl.textContent = 'Action Required';
-      subtextEl.textContent = 'High moderation pressure detected';
-    } else if (priorityState === 'ATTENTION') {
-      headlineEl.textContent = 'Items to Review';
-      subtextEl.textContent = 'Some items need attention';
-    } else {
-      headlineEl.textContent = 'All clear';
-      subtextEl.textContent = 'No action needed';
-    }
-  }
-
-  // 3. Jury Status Block
-  const sJury = ui.sJury();
-  if (sJury) {
-    const parent = sJury.parentElement as HTMLElement;
-    sJury.textContent = juryCount === 0 ? '0 to review' : `${juryCount} to review`;
-    parent.classList.toggle('needsAttention', juryCount > 0 && juryCount < 5);
-    parent.classList.toggle('isCritical', juryCount >= 5);
-    sJury.style.color = juryCount >= 5 ? 'var(--bad)' : juryCount > 0 ? 'var(--warn)' : 'var(--text)';
-    
-    const hJury = ui.hJury();
-    if (hJury) {
-      hJury.textContent = juryCount === 0 
-        ? 'Posts flagged for team review' 
-        : 'Verdicts needed for pending cases';
-    }
-  }
-
-  // 4. Queue Status Block
-  const sQueue = ui.sQueue();
-  if (sQueue) {
-    const parent = sQueue.parentElement as HTMLElement;
-    parent.classList.remove('needsAttention', 'isCritical');
-    if (workload >= 70) {
-      sQueue.textContent = 'High';
-      sQueue.style.color = 'var(--bad)';
-      parent.classList.add('isCritical');
-    } else if (workload >= 30) {
-      sQueue.textContent = 'Moderate';
-      sQueue.style.color = 'var(--warn)';
-      parent.classList.add('needsAttention');
-    } else {
-      sQueue.textContent = 'Stable / Low';
-      sQueue.style.color = 'var(--good)';
-    }
-  }
-
-  // 5. Watchlist Block
-  const sWatch = ui.sWatch();
-  if (sWatch) {
-    const parent = sWatch.parentElement as HTMLElement;
-    sWatch.textContent = watchCount === 0 ? '0 Users' : String(watchCount);
-    parent.classList.toggle('needsAttention', watchCount > 0);
-    sWatch.style.color = watchCount > 0 ? 'var(--warn)' : 'var(--text)';
-  }
-
-  // 6. Last Handover Block
-  const lastTs = payload.handover.active?.timestamp;
-  const sHandover = ui.sHandover();
-  if (sHandover) {
-    sHandover.textContent = lastTs ? relativeTime(lastTs) : 'No record';
-  }
-
-  // 7. System Status Dot
-  const statusEl = ui.systemStatus();
-  if (statusEl) {
-    const dot = statusEl.querySelector('.statusDot');
-    const text = statusEl.querySelector('.statusText');
-    if (dot && text) {
-      if (priorityState === 'CRITICAL') {
-        dot.className = 'statusDot dotBad';
-        text.textContent = 'Action Required';
-        (text as HTMLElement).style.color = 'var(--bad)';
-      } else if (priorityState === 'ATTENTION') {
-        dot.className = 'statusDot dotWarn';
-        text.textContent = 'Review Items';
-        (text as HTMLElement).style.color = 'var(--warn)';
-      } else {
-        dot.className = 'statusDot dotGood';
-        text.textContent = 'All Clear';
-        (text as HTMLElement).style.color = 'var(--good)';
-      }
-    }
-  }
-
-  // 8. Health Grid
-  const grid = ui.healthGrid();
-  if (grid) {
-    grid.innerHTML = '';
-
-    const h = payload.communityHealth;
-    const ops = document.createElement('div');
-    ops.className = 'opsGrid';
-
-    // Left column: metrics + pressure timeline
-    const left = document.createElement('div');
-    const metrics = document.createElement('div');
-    metrics.className = 'opsMetrics';
-
-    const avgResp = document.createElement('div');
-    avgResp.className = 'opsMetric';
-    avgResp.innerHTML = `<div class="label">Avg response time</div><div class="value">${h.avgResponseMinutes === null ? 'N/A' : `${String(h.avgResponseMinutes)}m`}</div><div class="muted">Source: ${h.metricsSource.toUpperCase()}</div>`;
-
-    const consensusPct = (() => {
-      const total = payload.jury.pending.length + payload.jury.resolved.length;
-      if (total === 0) return 'N/A';
-      const resolved = payload.jury.resolved.length;
-      return `${Math.round((resolved / total) * 100)}%`;
-    })();
-
-    const consensus = document.createElement('div');
-    consensus.className = 'opsMetric';
-    consensus.innerHTML = `<div class="label">Consensus rate</div><div class="value">${consensusPct}</div><div class="muted">jury verdicts resolved</div>`;
-
-    const activeEsc = document.createElement('div');
-    activeEsc.className = 'opsMetric';
-    activeEsc.innerHTML = `<div class="label">Active escalations</div><div class="value">${h.activeJuryCases}</div><div class="muted">awaiting jury vote</div>`;
-
-    metrics.appendChild(avgResp);
-    metrics.appendChild(consensus);
-    metrics.appendChild(activeEsc);
-
-    const timeline = document.createElement('div');
-    timeline.className = 'pressureTimeline';
-    const now = Date.now();
-    const buckets = 8;
-    const bucketMs = (60 * 60 * 1000) / buckets;
-    const counts = new Array(buckets).fill(0);
-    for (const a of payload.activity) {
-      const age = now - a.timestamp;
-      if (age < 0 || age > 60 * 60 * 1000) continue;
-      const idx = Math.floor((60 * 60 * 1000 - age) / bucketMs);
-      if (idx >= 0 && idx < buckets) counts[idx]++;
-    }
-
-    const maxCount = Math.max(1, ...counts);
-    for (let i = 0; i < buckets; i++) {
-      const slotTime = new Date(now - (buckets - i - 1) * bucketMs);
-      const label = slotTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const row = document.createElement('div');
-      row.className = 'pressureRow';
-      const lbl = document.createElement('div');
-      lbl.className = 'pressureLabel';
-      lbl.textContent = label;
-      const wrap = document.createElement('div');
-      wrap.className = 'pressureBarWrap';
-      const bar = document.createElement('div');
-      const pct = Math.round((counts[i] / maxCount) * 100);
-      bar.style.width = `${pct}%`;
-      const tone = counts[i] >= Math.max(3, Math.ceil(maxCount * 0.6)) ? 'pressureHigh' : counts[i] >= Math.max(1, Math.ceil(maxCount * 0.3)) ? 'pressureMed' : 'pressureLow';
-      bar.className = `pressureBar ${tone}`;
-      wrap.appendChild(bar);
-      row.appendChild(lbl);
-      row.appendChild(wrap);
-      timeline.appendChild(row);
-    }
-
-    left.appendChild(metrics);
-    left.appendChild(timeline);
-
-    // Right column: live operational signals
-    const right = document.createElement('div');
-    const signals = document.createElement('div');
-    signals.className = 'liveSignals';
-    const sigTitle = document.createElement('div');
-    sigTitle.className = 'label';
-    sigTitle.textContent = 'Live operational signals';
-    const sigList = document.createElement('ul');
-    const sigIns = payload.insights;
-    if (sigIns && sigIns.details && sigIns.details.length) {
-      sigIns.details.forEach((d) => {
-        const li = document.createElement('li');
-        li.textContent = d;
-        sigList.appendChild(li);
-      });
-    } else {
-      const li = document.createElement('li');
-      li.textContent = 'No active operational signals in the recent window.';
-      sigList.appendChild(li);
-    }
-    signals.appendChild(sigTitle);
-    signals.appendChild(sigList);
-
-    const resp = document.createElement('div');
-    resp.className = 'responseHealth';
-    const rows: Array<{ label: string; tag: string; tone: 'good' | 'warn' | 'bad' }> = [];
-    const pressureLabel = h.moderatorWorkload >= 75 ? 'High' : h.moderatorWorkload >= 45 ? 'Moderate' : 'Low';
-    rows.push({ label: 'Unresolved queue pressure', tag: pressureLabel, tone: h.moderatorWorkload >= 75 ? 'bad' : h.moderatorWorkload >= 45 ? 'warn' : 'good' });
-    
-    const voteFill = (() => {
-      const cases = payload.jury.pending.concat(payload.jury.resolved);
-      if (!cases.length) return '0%';
-      const avgVotes = Math.round((cases.reduce((s, c) => s + (c.votes.approve + c.votes.remove + c.votes.abstain), 0) / cases.length) * 100) / 100;
-      const pct = Math.min(100, Math.round((avgVotes / 2) * 100));
-      return `${pct}%`;
-    })();
-    rows.push({ label: 'Jury vote fill rate', tag: voteFill, tone: 'good' });
-    rows.push({ label: 'Ban appeal backlog', tag: '0 open', tone: 'good' });
-    rows.push({ label: 'Removal reversal rate', tag: 'N/A', tone: 'good' });
-    
-    const slaTone = h.escalationFrequency > 40 ? 'bad' : h.escalationFrequency > 15 ? 'warn' : 'good';
-    rows.push({ label: 'Escalation response SLA', tag: slaTone === 'bad' ? 'Breached' : slaTone === 'warn' ? 'Moderate' : 'OK', tone: slaTone });
-
-    for (const r of rows) {
-      const row = document.createElement('div');
-      row.className = 'row';
-      row.innerHTML = `<div>${escapeHtml(r.label)}</div><div><span class="tag ${r.tone}">${escapeHtml(r.tag)}</span></div>`;
-      resp.appendChild(row);
-    }
-
-    right.appendChild(signals);
-    right.appendChild(resp);
-    ops.appendChild(left);
-    ops.appendChild(right);
-    grid.appendChild(ops);
-  }
-
-  // 9. System Load Indicator
-  const lStatus = ui.loadStatus();
-  const lFill = ui.loadFill();
-  const lDetail = ui.loadDetail();
-  if (lStatus && lFill && lDetail) {
-    const load = payload.systemLoad;
-    
-    const loadConfig = {
-      calm: {
-        label: "Calm",
-        percent: 15,
-        color: "var(--good)",
-        description: "No significant moderation activity"
-      },
-      low: {
-        label: "Low Activity",
-        percent: 35,
-        color: "var(--good)",
-        description: "Light moderation activity"
-      },
-      moderate: {
-        label: "Moderate Activity",
-        percent: 60,
-        color: "var(--warn)",
-        description: "Increased activity detected"
-      },
-      high: {
-        label: "High Pressure",
-        percent: 90,
-        color: "var(--bad)",
-        description: "High moderation load — review queue"
-      }
-    };
-
-    const config = loadConfig[load.level] || loadConfig.calm;
-    
-    lStatus.textContent = config.label;
-    lStatus.style.color = config.color;
-    lFill.style.width = `${config.percent}%`;
-    lFill.style.background = config.color;
-    lDetail.textContent = config.description;
-  }
-};
-
-// ============================================================================
-// MAIN ASSEMBLY
-// ============================================================================
-
-/**
- * Main function to assemble all dashboard modules and update the root container.
- */
-const renderApp = (payload: DashboardPayload) => {
-  console.log('[ModPulse Web] rendering app modules');
-  renderHeader(payload);
-  renderCommandCenter(payload);
-  renderHandoverSection(payload);
-  renderJuryBoard(payload);
-  renderActivityFeed(payload);
-  renderInsights(payload);
-  console.log('[ModPulse Web] render complete');
 };
 
 const fetchDashboard = async (): Promise<DashboardPayload> => {
@@ -1000,14 +819,18 @@ const wireTopActions = () => {
 let lastPayload: DashboardPayload | null = null;
 
 const refresh = async () => {
-  try {
-    const payload = await fetchDashboard();
-    lastPayload = payload;
-    renderApp(payload);
-  } catch (err) {
-    console.error('[ModPulse Web] refresh error', err);
-    showToast('Refresh failed. Checking connectivity…');
-  }
+  console.log('[ModPulse Web] refreshing dashboard state');
+  const payload = await fetchDashboard();
+  lastPayload = payload;
+
+  renderStatus(payload);
+  renderMeta(payload);
+  renderHeroMetrics(payload);
+  renderHeroSummary(payload);
+  renderHandover(payload);
+  renderJury(payload);
+  renderHealth(payload);
+  renderActivity(payload);
 };
 
 const wireJuryModal = () => {
