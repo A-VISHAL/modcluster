@@ -6,21 +6,21 @@
 
 :root {
   --bg0: #030303;
-  --bg1: #1A1A1B;
-  --card: rgba(26, 26, 27, 0.88);
-  --card2: rgba(30, 30, 31, 0.75);
-  --stroke: rgba(255, 255, 255, 0.08);
-  --stroke2: rgba(255, 255, 255, 0.14);
-  --text: #D7DADC;
-  --muted: #818384;
-  --muted2: #474748;
-  --good: #00D5A3;
-  --warn: #FFD635;
-  --bad: #FF4500;
-  --brand: #FF4500;
-  --brand2: #FF581A;
-  --shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
-  --shadow2: 0 10px 32px rgba(0, 0, 0, 0.45);
+  --bg1: #1a1a1b;
+  --card: rgba(26, 26, 27, 0.85);
+  --card2: rgba(38, 38, 39, 0.7);
+  --stroke: rgba(255, 255, 255, 0.1);
+  --stroke2: rgba(255, 255, 255, 0.15);
+  --text: #ffffff;
+  --muted: rgba(255, 255, 255, 0.6);
+  --muted2: rgba(255, 255, 255, 0.35);
+  --good: #46d160;
+  --warn: #ffb000;
+  --bad: #ff4500;
+  --brand: #ff4500;
+  --brand2: #ff581a;
+  --shadow: 0 24px 64px rgba(0, 0, 0, 0.7);
+  --shadow2: 0 10px 32px rgba(0, 0, 0, 0.5);
   --radius: 12px;
 }
 
@@ -36,9 +36,9 @@ body {
 body {
   margin: 0;
   color: var(--text);
-  background: radial-gradient(1200px 800px at 20% -10%, rgba(255, 69, 0, 0.12), transparent 55%),
-    radial-gradient(900px 700px at 90% 10%, rgba(255, 88, 26, 0.08), transparent 50%),
-    radial-gradient(900px 700px at 50% 100%, rgba(0, 213, 163, 0.05), transparent 45%),
+  background: radial-gradient(1200px 800px at 20% -10%, rgba(255, 69, 0, 0.15), transparent 55%),
+    radial-gradient(900px 700px at 90% 10%, rgba(255, 88, 26, 0.1), transparent 50%),
+    radial-gradient(900px 700px at 50% 100%, rgba(255, 69, 0, 0.05), transparent 45%),
     linear-gradient(180deg, var(--bg0), var(--bg1));
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   
@@ -77,12 +77,12 @@ body.modalOpen {
   width: 44px;
   height: 44px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #FF4500, #FF581A);
+  background: linear-gradient(135deg, rgba(124, 92, 255, 0.95), rgba(45, 212, 255, 0.75));
   display: grid;
   place-items: center;
   font-weight: 900;
   letter-spacing: 0.06em;
-  box-shadow: 0 16px 40px rgba(255, 69, 0, 0.25);
+  box-shadow: 0 16px 40px rgba(124, 92, 255, 0.25);
 }
 
 .brandText {
