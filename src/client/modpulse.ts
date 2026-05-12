@@ -330,10 +330,10 @@ const renderJuryBoard = (payload: DashboardPayload) => {
     const progress = Math.min(100, Math.round((Math.max(juryCase.votes.approve, juryCase.votes.remove) / threshold) * 100));
     const progressTone =
       juryCase.votes.remove >= threshold
-        ? 'linear-gradient(90deg, rgba(255,92,122,0.75), rgba(255,204,102,0.55))'
+        ? 'linear-gradient(90deg, var(--bad), var(--warn))'
         : juryCase.votes.approve >= threshold
-          ? 'linear-gradient(90deg, rgba(67,243,197,0.75), rgba(45,212,255,0.55))'
-          : 'linear-gradient(90deg, rgba(67,243,197,0.55), rgba(124,92,255,0.55))';
+          ? 'linear-gradient(90deg, var(--good), var(--brand))'
+          : 'linear-gradient(90deg, var(--muted), var(--brand2))';
 
     el.innerHTML = `
       <div class="caseTop">
