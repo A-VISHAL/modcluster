@@ -48,6 +48,7 @@ type DashboardJuryCase = {
   ruleCitation: string;
   contextNotes: string;
   votes: ReturnType<typeof countVotes>;
+  votedModerators: string[]; // List of mods who voted
   finalVerdict: 'approve' | 'remove' | null;
   status: 'pending' | 'resolved';
   priority: 'low' | 'medium' | 'high';
@@ -487,6 +488,7 @@ api.get('/dashboard', async (c) => {
       ruleCitation: juryCase.ruleCitation,
       contextNotes: juryCase.contextNotes,
       votes,
+      votedModerators: juryCase.votes.map(v => v.moderator),
       finalVerdict: juryCase.finalVerdict,
       status: juryCase.status,
       priority,

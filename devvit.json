@@ -1,7 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "modcluster",
-
+  "name": "modpulse2",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -11,16 +10,13 @@
       }
     }
   },
-
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
   },
-
   "blocks": {
     "entry": "src/devvit.ts"
   },
-
   "menu": {
     "items": [
       {
@@ -46,23 +42,19 @@
       }
     ]
   },
-
   "forms": {
     "mopComment": "/internal/form/mop-comment-submit",
     "mopPost": "/internal/form/mop-post-submit",
     "handoverForm": "/internal/form/handover-submit",
     "viewHandover": "/internal/form/handover-view-submit"
   },
-
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"
   },
-
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch"
   },
-
   "permissions": {
     "reddit": {
       "enable": true,
@@ -71,10 +63,8 @@
         "SUBMIT_POST"
       ]
     },
-
     "redis": true
   },
-
   "dev": {
     "subreddit": "modcluster_dev"
   }
