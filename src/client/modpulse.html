@@ -78,7 +78,24 @@
           </div>
         </section>
 
-        <!-- STEP 7: COMMUNITY HEALTH (Signals) -->
+        <!-- STEP 7: MOD ACTIVITY TIMELINE -->
+        <section id="activityPanel" class="panel">
+          <div class="panelHeader">
+            <div class="titleGroup">
+              <h2 class="panelTitle">Recent Moderator Activity</h2>
+              <span class="activitySubtitle">Live operational events from Redis, updated as the queue moves.</span>
+            </div>
+            <div class="panelActions">
+              <button class="btn btnSmall activityTabBtn active" id="activityTabLive" data-tab="live">Live feed</button>
+              <button class="btn btnSmall activityTabBtn" id="activityTabRecent" data-tab="recent">Recent 12</button>
+            </div>
+          </div>
+          <div id="activityList" class="activityList">
+            <div class="emptyState"><span class="dim">Loading activity…</span></div>
+          </div>
+        </section>
+
+        <!-- STEP 8: COMMUNITY HEALTH (Signals) -->
         <section id="secondaryInfo" class="panel secondaryPanel">
           <div class="signalsHeader">
             <div id="healthGrid" class="healthGrid">
