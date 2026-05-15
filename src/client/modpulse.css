@@ -162,6 +162,129 @@ body {
 .signalVal { color: #FFFFFF; font-weight: 700; text-align: right; }
 .signalVal.dimVal { color: #818384; font-weight: 400; }
 
+/* ── ACTIVITY TIMELINE ───────────────────────────────────── */
+.activitySubtitle {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 400;
+  margin-left: var(--space-s);
+}
+
+.activityList {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.activityList::-webkit-scrollbar { width: 6px; }
+.activityList::-webkit-scrollbar-track { background: transparent; }
+.activityList::-webkit-scrollbar-thumb { background: #343536; border-radius: 10px; }
+.activityList::-webkit-scrollbar-thumb:hover { background: #444546; }
+
+/* Vertical timeline spine */
+.activityList::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--stroke);
+}
+
+.activityItem {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-m);
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(52, 53, 54, 0.5);
+  position: relative;
+}
+.activityItem:last-child { border-bottom: none; }
+
+.activityDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 3px;
+  position: relative;
+  z-index: 1;
+  border: 2px solid var(--bg);
+}
+.dot-good  { background: #46D160; }
+.dot-warn  { background: #FFB300; }
+.dot-bad   { background: #FF4500; }
+.dot-soft  { background: #818384; }
+
+.activityBody { flex: 1; min-width: 0; }
+
+.activityAction {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.activityMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.activityMod {
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(255,255,255,0.07);
+  color: var(--text-muted);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.activityDetail {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.activityTime {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  margin-top: 1px;
+  min-width: 75px;
+}
+
+.timeAbsolute {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeRelative {
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+/* Tab active state */
+.activityTabBtn.active {
+  background: var(--primary);
+  color: #fff;
+}
 .emptyState { color: var(--text-muted); font-style: italic; font-size: 13px; padding: var(--space-s) 0; }
 .dim { font-size: 11px; opacity: 0.7; font-style: normal; }
 

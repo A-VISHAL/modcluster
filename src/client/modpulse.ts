@@ -46,6 +46,14 @@ type DashboardPayload = {
       };
     }>;
   };
+  activity: Array<{
+    id: string;
+    action: string;
+    moderator: string | null;
+    detail: string | null;
+    tone: 'good' | 'warn' | 'bad' | 'soft';
+    timestamp: number;
+  }>;
   communityHealth: {
     reportsToday: number;
     toxicityAlerts: number;
@@ -93,6 +101,10 @@ const relativeTime = (timestamp: number) => {
   return `${Math.floor(deltaHours / 24)}d ago`;
 };
 
+const formatClockTime = (timestamp: number) => {
+  return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+};
+
 const getInsight = (juryCases: any[], usersToWatch: string) => {
   const userCount = usersToWatch ? usersToWatch.split(',').filter(u => u.trim()).length : 0;
   if (juryCases.length > 0 && userCount > 0) {
@@ -116,7 +128,6 @@ const getHandoverConfidence = (active: any) => {
   if (age < 4 * ONE_HOUR) return "🟡 Handover may be outdated";
   return "⚠️ Handover likely outdated";
 };
-
 const renderHero = (payload: DashboardPayload) => {
   const heroTextEl = byId<HTMLDivElement>('heroText');
   const heroSubEl = byId<HTMLDivElement>('heroSub');
@@ -262,6 +273,49 @@ const renderHealth = (payload: DashboardPayload) => {
   `).join('');
 };
 
+// ── ACTIVITY TIMELINE ────────────────────────────────────
+let activityTab: 'live' | 'recent' = 'live';
+
+const renderActivity = (payload: DashboardPayload) => {
+  const list = byId<HTMLDivElement>('activityList');
+  const events = payload.activity ?? [];
+
+  if (!events.length) {
+    list.innerHTML = `<div class="emptyState"><span class="dim">No activity logged yet. Actions will appear here as the queue moves.</span></div>`;
+    return;
+  }
+
+  // "Live feed" = most recent 6 events (newest first, already sorted by API)
+  // "Recent 12" = up to 12 events
+  const shown = activityTab === 'live' ? events.slice(0, 6) : events.slice(0, 12);
+
+  list.innerHTML = shown.map(e => {
+    const dotClass = `dot-${e.tone}`;
+    const modBadge = e.moderator
+      ? `<span class="activityMod">${escapeHtml(e.moderator)}</span>`
+      : '';
+    const detail = e.detail
+      ? `<span class="activityDetail">${escapeHtml(e.detail)}</span>`
+      : '';
+    return `
+      <div class="activityItem">
+        <div class="activityDot ${dotClass}"></div>
+        <div class="activityBody">
+          <div class="activityAction">${escapeHtml(e.action)}</div>
+          <div class="activityMeta">
+            ${modBadge}
+            ${detail}
+          </div>
+        </div>
+        <div class="activityTime">
+          <div class="timeAbsolute">${formatClockTime(e.timestamp)}</div>
+          <div class="timeRelative">${relativeTime(e.timestamp)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+};
+
 const refresh = async () => {
   try {
     const res = await fetch('/api/dashboard');
@@ -272,6 +326,7 @@ const refresh = async () => {
     renderHero(payload);
     renderJury(payload);
     renderHandover(payload);
+    renderActivity(payload);
     renderHealth(payload);
     
     (window as any).lastPayload = payload;
@@ -352,6 +407,16 @@ const wire = () => {
   byId('juryCloseBtn').onclick = () => closeModal(juryModalBack);
   byId('juryCancelBtn').onclick = () => closeModal(juryModalBack);
 
+  // Activity Timeline Tabs
+  document.querySelectorAll<HTMLButtonElement>('.activityTabBtn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.activityTabBtn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activityTab = (btn.dataset.tab as 'live' | 'recent') ?? 'live';
+      const payload = (window as any).lastPayload as DashboardPayload | undefined;
+      if (payload) renderActivity(payload);
+    });
+  });
   // Progressive Disclosure Toggle
   const signalsToggle = byId<HTMLButtonElement>('signalsToggle');
   const detailedSignals = byId<HTMLDivElement>('detailedSignals');
@@ -360,7 +425,6 @@ const wire = () => {
     const isHidden = detailedSignals.classList.toggle('hidden');
     signalsToggle.textContent = isHidden ? 'View detailed signals' : 'Hide detailed signals';
   });
-
   // Jury List Event Delegation
   const juryList = byId('juryList');
   juryList.addEventListener('click', (e) => {
