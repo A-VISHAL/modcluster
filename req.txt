@@ -1,0 +1,33 @@
+ModCluster setup and run instructions
+
+1. Clone the repository
+   git clone <repository-url>
+   cd modcluster
+
+2. Install dependencies
+   npm install
+
+3. Check the required Node.js version
+   Use Node.js 22.2.0 or newer.
+
+4. Log in to Devvit
+   devvit login
+
+5. Run the app locally in playtest mode
+   npm run dev
+
+6. Optional checks before upload
+   npm run type-check
+   npm run lint
+   npm run test
+
+7. Build and upload
+   npm run build
+   devvit upload
+
+8. Optional publish step
+   devvit publish
+
+Notes
+- The main development command in this repo is `npm run dev`, which runs `devvit playtest`.
+- The app is configured through `devvit.json` and the TypeScript entry point in `src/devvit.ts`.
