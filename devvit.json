@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "modpulse2",
+  "name": "ModPulse",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -66,6 +66,6 @@
     "redis": true
   },
   "dev": {
-    "subreddit": "modcluster_dev"
+    "subreddit": "modpulse_final"
   }
 }

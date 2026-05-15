@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "modpulse2",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
