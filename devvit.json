@@ -1,5 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+<<<<<<< HEAD
   "name": "ModPulse",
   "post": {
     "dir": "dist/client",
@@ -10,13 +11,16 @@
       }
     }
   },
+
   "server": {
     "dir": "dist/server",
     "entry": "index.cjs"
   },
+
   "blocks": {
     "entry": "src/devvit.ts"
   },
+
   "menu": {
     "items": [
       {
@@ -42,19 +46,23 @@
       }
     ]
   },
+
   "forms": {
     "mopComment": "/internal/form/mop-comment-submit",
     "mopPost": "/internal/form/mop-post-submit",
     "handoverForm": "/internal/form/handover-submit",
     "viewHandover": "/internal/form/handover-view-submit"
   },
+
   "triggers": {
     "onAppInstall": "/internal/triggers/on-app-install"
   },
+
   "scripts": {
     "build": "vite build",
     "dev": "vite build --watch"
   },
+
   "permissions": {
     "reddit": {
       "enable": true,
@@ -63,8 +71,10 @@
         "SUBMIT_POST"
       ]
     },
+
     "redis": true
   },
+
   "dev": {
     "subreddit": "modpulse_final"
   }
