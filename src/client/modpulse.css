@@ -243,6 +243,53 @@ body {
   color: #fff;
 }
 
+.healthAdvancedArea {
+  margin-top: var(--space-s);
+  border-top: 1px solid var(--stroke);
+  padding-top: var(--space-m);
+}
+
+.advancedHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.detailedSignalsGrid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 32px;
+  font-size: 11px;
+}
+
+.detailedSignalsGrid.hidden { display: none; }
+
+.signalItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 4px;
+}
+
+.signalLabel { color: var(--text-muted); }
+.signalVal { color: var(--text); font-weight: 700; }
+.signalVal.dimVal { color: #818384; font-weight: 400; }
+
+.signalsToggleBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.signalsToggleBtn:hover { color: var(--text); }
+
 /* ── ACTIVITY TIMELINE ───────────────────────────────────── */
 .activitySubtitle {
   font-size: 10px;

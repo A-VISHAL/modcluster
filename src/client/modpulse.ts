@@ -290,6 +290,26 @@ const renderHealth = (payload: DashboardPayload) => {
   
   const slaType = (h.avgResponseMinutes || 0) > 30 ? 'error' : (h.avgResponseMinutes || 0) > 15 ? 'warn' : 'good';
   updateMetric('healthSlaStatus', (h.avgResponseMinutes || 0) > 30 ? 'CRITICAL' : 'OK', slaType);
+
+  // 4. Update Advanced Metrics Grid
+  const advanced = byId<HTMLDivElement>('advancedMetricsContent');
+  const metrics = [
+    { label: 'Queue backlog', val: h.queueBacklog },
+    { label: 'Reports today', val: h.reportsToday },
+    { label: 'Toxicity alerts', val: h.toxicityAlerts },
+    { label: 'Burnout risk', val: h.burnoutRisk || 'Low' },
+    { label: 'Avg response', val: h.avgResponseMinutes ? `${h.avgResponseMinutes}m` : 'N/A' },
+    { label: 'Removals today', val: h.removalsToday },
+    { label: 'Escalation freq', val: `${h.escalationFrequency}%` },
+    { label: 'Data source', val: h.metricsSource }
+  ];
+  
+  advanced.innerHTML = metrics.map(m => `
+    <div class="signalItem">
+      <span class="signalLabel">${m.label}</span>
+      <span class="signalVal ${m.label === 'Data source' ? 'dimVal' : ''}">${m.val}</span>
+    </div>
+  `).join('');
 };
 
 // ── ACTIVITY TIMELINE ────────────────────────────────────
@@ -446,14 +466,17 @@ const wire = () => {
     });
   });
 
-  // Progressive Disclosure Toggle
-  const signalsToggle = byId<HTMLButtonElement>('signalsToggle');
-  const detailedSignals = byId<HTMLDivElement>('detailedSignals');
+  // Advanced Metrics Toggle
+  const advancedToggle = byId<HTMLButtonElement>('advancedMetricsToggle');
+  const advancedContent = byId<HTMLDivElement>('advancedMetricsContent');
 
-  signalsToggle.addEventListener('click', () => {
-    const isHidden = detailedSignals.classList.toggle('hidden');
-    signalsToggle.textContent = isHidden ? 'View detailed signals' : 'Hide detailed signals';
-  });
+  if (advancedToggle && advancedContent) {
+    advancedToggle.addEventListener('click', () => {
+      const isHidden = advancedContent.classList.toggle('hidden');
+      advancedToggle.textContent = isHidden ? 'View detailed signals' : 'Hide detailed signals';
+    });
+  }
+
   // Jury List Event Delegation
   const juryList = byId('juryList');
   juryList.addEventListener('click', (e) => {
