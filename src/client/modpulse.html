@@ -95,16 +95,69 @@
           </div>
         </section>
 
-        <!-- STEP 8: COMMUNITY HEALTH (Signals) -->
-        <section id="secondaryInfo" class="panel secondaryPanel">
-          <div class="signalsHeader">
-            <div id="healthGrid" class="healthGrid">
-              Queue 0 • Reports 0 • Alerts 0 • Workload low
+        <!-- STEP 8: COMMUNITY HEALTH (Rich Dashboard) -->
+        <section id="healthDashboard" class="panel healthPanel">
+          <div class="panelHeader">
+            <div class="titleGroup">
+              <h2 class="panelTitle">Community Health</h2>
+              <span class="activitySubtitle">Operational indicators from live moderation activity and queue state.</span>
             </div>
-            <button id="signalsToggle" class="signalsToggleBtn">View detailed signals</button>
+            <div class="panelActions">
+              <button class="btn btnSmall healthTabBtn active" data-tab="signals">Signals</button>
+              <button class="btn btnSmall healthTabBtn" data-tab="workload">Workload</button>
+            </div>
           </div>
-          <div id="detailedSignals" class="detailedSignals hidden">
-            <!-- Populated by JS -->
+
+          <div class="healthMain">
+            <div class="healthCards">
+              <div class="healthCard">
+                <div class="cardLabel">AVG RESPONSE TIME</div>
+                <div class="cardVal" id="healthResponseTime">--</div>
+                <div class="cardSub" id="healthSource">Source: --</div>
+              </div>
+              <div class="healthCard">
+                <div class="cardLabel">CONSENSUS RATE</div>
+                <div class="cardVal" id="healthConsensus">--</div>
+                <div class="cardSub">jury verdicts resolved</div>
+              </div>
+              <div class="healthCard">
+                <div class="cardLabel">ACTIVE ESCALATIONS</div>
+                <div class="cardVal" id="healthEscalations">--</div>
+                <div class="cardSub">awaiting jury vote</div>
+              </div>
+            </div>
+
+            <div class="healthDetailArea">
+              <div class="healthSignalsList">
+                <div class="detailGroupLabel">Live operational signals</div>
+                <ul id="healthSignals" class="signalsList">
+                  <!-- Populated by JS -->
+                </ul>
+              </div>
+              
+              <div class="healthMetricsTable">
+                <div class="metricRow">
+                  <span>Unresolved queue pressure</span>
+                  <span id="healthQueueStatus" class="statusBadge">--</span>
+                </div>
+                <div class="metricRow">
+                  <span>Jury vote fill rate</span>
+                  <span id="healthFillRate" class="statusBadge">--</span>
+                </div>
+                <div class="metricRow">
+                  <span>Ban appeal backlog</span>
+                  <span id="healthBanBacklog" class="statusBadge">--</span>
+                </div>
+                <div class="metricRow">
+                  <span>Removal reversal rate</span>
+                  <span id="healthReversalRate" class="statusBadge">--</span>
+                </div>
+                <div class="metricRow">
+                  <span>Escalation response SLA</span>
+                  <span id="healthSlaStatus" class="statusBadge">--</span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </main>

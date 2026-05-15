@@ -129,38 +129,119 @@ body {
 .watchUser { font-weight: 700; color: var(--primary); }
 .watchReason { color: var(--text-muted); }
 
-/* SYSTEM SIGNALS */
-.secondaryPanel { background: transparent; border: none; padding: 0 var(--space-l); width: 100%; }
-.signalsHeader { display: flex; justify-content: space-between; align-items: center; gap: var(--space-s); margin-bottom: 4px; }
-.healthGrid { font-size: 11px; color: var(--text-muted); }
+/* ── COMMUNITY HEALTH DASHBOARD ─────────────────────────── */
+.healthMain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-m);
+}
 
-.signalsToggleBtn {
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: inherit;
+.healthCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-s);
+}
+
+.healthCard {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: var(--space-m);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardLabel {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cardVal {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.cardSub {
   font-size: 10px;
   color: var(--text-muted);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  white-space: nowrap;
 }
-.signalsToggleBtn:hover { color: var(--text); }
 
-.detailedSignals {
-  margin-top: 8px;
+.healthDetailArea {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 24px;
-  font-size: 10.5px;
-  width: 100%;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--space-l);
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: var(--space-m);
 }
-.detailedSignals.hidden { display: none; }
-.signalItem { display: flex; justify-content: space-between; align-items: baseline; }
-.signalLabel { color: #CCCCCC; text-align: left; }
-.signalVal { color: #FFFFFF; font-weight: 700; text-align: right; }
-.signalVal.dimVal { color: #818384; font-weight: 400; }
+
+.signalsList {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-s);
+}
+
+.signalsList li {
+  font-size: 11px;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: var(--space-s);
+}
+
+.signalsList li::before {
+  content: '•';
+  color: var(--text-muted);
+}
+
+.healthMetricsTable {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metricRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text);
+}
+
+.statusBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(70, 209, 96, 0.1);
+  color: #46D160;
+  min-width: 45px;
+  text-align: center;
+}
+
+.statusBadge.warn { background: rgba(255, 179, 0, 0.1); color: #FFB300; }
+.statusBadge.error { background: rgba(255, 69, 0, 0.1); color: #FF4500; }
+.statusBadge.dim { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+
+.detailGroupLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.healthTabBtn.active {
+  background: var(--primary);
+  color: #fff;
+}
 
 /* ── ACTIVITY TIMELINE ───────────────────────────────────── */
 .activitySubtitle {
