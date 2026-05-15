@@ -291,6 +291,15 @@ button:disabled {
   gap: 10px;
 }
 
+.warningList.collapsed {
+  max-height: 240px;
+  overflow: hidden;
+}
+
+.warningList.expanded {
+  max-height: none;
+}
+
 .templateCard,
 .ruleListItem,
 .warningItem,
@@ -538,7 +547,7 @@ button:disabled {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 14px;
+  padding: 12px;
   margin-top: 14px;
   border-radius: var(--radius-md);
   background: rgba(255, 69, 0, 0.08);
@@ -552,10 +561,27 @@ button:disabled {
 }
 
 .warningItem {
-  padding: 12px;
+  padding: 10px 12px;
   color: #ffd0d3;
   border-color: rgba(255, 93, 99, 0.15);
   background: rgba(255, 69, 0, 0.08);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.viewMoreButton {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: #ffb08f;
+  padding: 0;
+  margin-top: -2px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.viewMoreButton:hover {
+  color: #ff4500;
 }
 
 .testerSummary,

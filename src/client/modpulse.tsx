@@ -350,6 +350,9 @@ const App = () => {
   const [pendingDeploy, setPendingDeploy] = useState(false);
   const [isRefreshing, startRefreshing] = useTransition();
   const deferredYaml = useDeferredValue(yamlDraft);
+  const [juryPending, setJuryPending] = useState<DashboardPayload['livePreview'] | null>(null);
+  const [juryResolved, setJuryResolved] = useState<any[] | null>(null);
+  const [handoverHistory, setHandoverHistory] = useState<Array<{ author: string; timestamp: number; activeSituations?: string; notes?: string }>>([]);
 
   const templates = payload?.templates ?? [];
   const activeRuleSet = ruleSet ?? payload?.ruleSet ?? null;
@@ -402,6 +405,15 @@ const App = () => {
     setAnalysis(nextPayload.analysis);
     setSelectedRuleId(nextPayload.ruleSet.rules[0]?.id ?? null);
     setNeedsDangerousConfirm(nextPayload.analysis.confirmationRequired);
+    // Also fetch operational dashboard (jury + handover history)
+    try {
+      const op = await apiFetch<any>('/api/dashboard');
+      setJuryPending(op.jury?.pending ?? []);
+      setJuryResolved(op.jury?.resolved ?? []);
+      setHandoverHistory(op.handover?.history ?? []);
+    } catch (err) {
+      // ignore
+    }
   };
 
   useEffect(() => {
@@ -598,6 +610,21 @@ const App = () => {
       setYamlDraft(response.yaml);
       setSelectedRuleId(response.ruleSet.rules[0]?.id ?? null);
       await loadInitial();
+    }
+  };
+
+  const voteOnCase = async (caseId: string, vote: 'remove' | 'approve' | 'abstain') => {
+    try {
+      await apiFetch('/api/jury/vote', { caseId, vote });
+    } catch (err) {
+      console.warn('Vote failed', err);
+    }
+
+    // Refresh both dashboards
+    try {
+      await loadInitial();
+    } catch (_) {
+      // ignore
     }
   };
 
@@ -914,6 +941,73 @@ const App = () => {
             </div>
             <div className="inlineNote">Dangerous rules require confirmation before activation.</div>
           </article>
+
+            <article className="panel juryPanel">
+              <div className="panelHeader compact">
+                <div>
+                  <h2>Jury verdict board</h2>
+                  <p>Pending cases sent to multi-mod review.</p>
+                </div>
+                <button className="btn subtle" onClick={() => void loadInitial()}>Refresh</button>
+              </div>
+              {(!juryPending || juryPending.length === 0) ? (
+                <div className="emptyState">No pending jury cases.</div>
+              ) : (
+                juryPending.map((c: any) => (
+                  <div key={c.id} className="juryCard">
+                    <div className="juryHeader">
+                      <strong>{c.postId}</strong>
+                      <span>{c.priority?.toUpperCase() ?? 'MED'}</span>
+                    </div>
+                    <div className="juryBody">
+                      <div className="juryReason">{c.reason}</div>
+                      <div className="juryMeta">{c.contextNotes}</div>
+                      <div className="juryVotes">Remove: {c.votes?.remove ?? 0} · Approve: {c.votes?.approve ?? 0} · Abstain: {c.votes?.abstain ?? 0}</div>
+                    </div>
+                    <div className="juryActions">
+                      <button className="btn danger" onClick={() => void voteOnCase(c.id, 'remove')}>Vote Remove</button>
+                      <button className="btn" onClick={() => void voteOnCase(c.id, 'approve')}>Vote Approve</button>
+                      <button className="btn subtle" onClick={() => void voteOnCase(c.id, 'abstain')}>Abstain</button>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div className="panelHeader compact" style={{ marginTop: 12 }}>
+                <div>
+                  <h3>Resolved cases</h3>
+                </div>
+              </div>
+              {(juryResolved && juryResolved.length) ? (
+                juryResolved.map((c: any) => (
+                  <div key={c.id} className="listRow">
+                    <span>{c.postId} · {c.finalVerdict ? c.finalVerdict.toUpperCase() : c.status}</span>
+                    <span>{relativeTime(c.resolvedAt ?? c.createdAt)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="emptyState">No resolved cases.</div>
+              )}
+            </article>
+
+            <article className="panel handoverHistoryPanel">
+              <div className="panelHeader compact">
+                <div>
+                  <h2>Handover history</h2>
+                  <p>Recent shift handover cards.</p>
+                </div>
+                <button className="btn subtle" onClick={() => void loadInitial()}>Refresh</button>
+              </div>
+              {(handoverHistory ?? []).length === 0 ? (
+                <div className="emptyState">No handover history yet.</div>
+              ) : (
+                (handoverHistory ?? []).slice(0, 6).map((h) => (
+                  <div key={`${h.author}-${h.timestamp}`} className="listRow">
+                    <span>{h.author}</span>
+                    <span>{relativeTime(h.timestamp)}</span>
+                  </div>
+                ))
+              )}
+            </article>
 
           <article className="panel feedPanel">
             <div className="panelHeader compact">
