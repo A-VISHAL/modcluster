@@ -5,6 +5,7 @@ import './devvit';
 import { api } from './routes/api';
 import { forms } from './routes/forms';
 import { menu } from './routes/menu';
+import { rules } from './routes/rules';
 import { triggers } from './routes/triggers';
 
 const app = new Hono();
@@ -15,6 +16,7 @@ internal.route('/form', forms);
 internal.route('/triggers', triggers);
 
 app.route('/api', api);
+app.route('/api/rules', rules);
 app.route('/internal', internal);
 
 serve({

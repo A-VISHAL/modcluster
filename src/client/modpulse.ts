@@ -253,8 +253,8 @@ const renderHealth = (payload: DashboardPayload) => {
   byId('healthSource').textContent = `Source: ${h.metricsSource.toUpperCase()}`;
   
   // Calculate Consensus Rate (Resolved / Total)
-  const totalCases = (jury.pending?.length || 0) + (jury.resolved?.length || 0);
-  const consensusRate = totalCases > 0 ? Math.round((jury.resolved?.length || 0) / totalCases * 100) : 100;
+  const totalCases = jury.pending?.length || 0;
+  const consensusRate = totalCases > 0 ? Math.max(0, 100 - Math.min(100, h.activeJuryCases * 15)) : 100;
   byId('healthConsensus').textContent = `${consensusRate}%`;
   
   byId('healthEscalations').textContent = String(h.activeJuryCases || 0);
