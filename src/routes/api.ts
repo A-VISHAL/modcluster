@@ -26,6 +26,13 @@ import {
 } from '../core/security';
 import { executeImmediateAction } from '../core/moderation';
 import { generateInsights } from '../core/insights';
+import {
+  flagPost,
+  unflagPost,
+  getFlaggedPosts,
+  getFlagStats,
+  type FlaggedPost,
+} from '../core/flags';
 
 export const api = new Hono();
 
@@ -81,6 +88,10 @@ type DashboardPayload = {
   jury: {
     pending: DashboardJuryCase[];
     resolved: DashboardJuryCase[];
+  };
+  flags: {
+    posts: FlaggedPost[];
+    stats: { total: number; high: number; medium: number; low: number };
   };
   communityHealth: {
     reportsToday: number;
@@ -421,16 +432,20 @@ api.get('/dashboard', async (c) => {
   let activityForMetrics: Awaited<ReturnType<typeof fetchRecentActivity>> = [];
   let juryCases: JuryCase[] = [];
   let resolvedCases: JuryCase[] = [];
+  let flagsRaw: FlaggedPost[] = [];
+  let flagStatsRaw = { total: 0, high: 0, medium: 0, low: 0 };
 
   if (subredditId && redisConnected) {
     await cleanupLegacyDemoQueueEntries(subredditId);
 
-    const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw] = await Promise.all([
+    const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw, flagsRawFetched, flagStatsRawFetched] = await Promise.all([
       fetchActiveHandover(subredditId),
       fetchHandoverHistory(subredditId, 20),
       fetchActiveCases(subredditId, 20),
       fetchResolvedCases(subredditId, 20),
       fetchRecentActivity(subredditId, 80),
+      getFlaggedPosts(subredditId),
+      getFlagStats(subredditId),
     ]);
 
     activeHandover = activeHandoverRaw;
@@ -439,6 +454,8 @@ api.get('/dashboard', async (c) => {
     resolvedCases = resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
     activityForMetrics = activityRaw.filter((event) => !isDemoActivity(event));
     activity = activityForMetrics.slice(0, 12);
+    flagsRaw = flagsRawFetched;
+    flagStatsRaw = flagStatsRawFetched;
   }
 
   const communityHealth = await computeCommunityHealth({
@@ -530,6 +547,10 @@ api.get('/dashboard', async (c) => {
     jury: {
       pending,
       resolved,
+    },
+    flags: {
+      posts: flagsRaw,
+      stats: flagStatsRaw,
     },
     communityHealth,
     insights,
@@ -900,6 +921,132 @@ api.post('/moderation/immediate', async (c) => {
       {
         ok: false,
         error: `Immediate action failed: ${errorMessage}`,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * FLAG A POST
+ * Allows moderators to mark posts for review without jury deliberation
+ */
+api.post('/flags/flag', async (c) => {
+  const subredditId = requireSubredditId();
+  const username = getCurrentModerator();
+  const auditContext = getAuditContext();
+
+  const input = await c.req.json<{
+    postId: string;
+    reason: string;
+    priority?: 'low' | 'medium' | 'high';
+  }>();
+
+  if (!input.postId || !input.reason) {
+    return c.json({ ok: false, error: 'Missing postId or reason' }, 400);
+  }
+
+  try {
+    const flag = await flagPost(
+      subredditId,
+      input.postId,
+      input.reason,
+      username,
+      input.priority ?? 'medium'
+    );
+
+    await logActivity({
+      subredditId,
+      action: 'Post flagged for review',
+      moderator: username,
+      tone: 'warn',
+      detail: `Post: ${input.postId} • Reason: ${input.reason} • Priority: ${input.priority ?? 'medium'}`,
+      timestamp: auditContext.timestamp,
+    });
+
+    console.log('[ModPulse][flags] post flagged', {
+      subredditId,
+      postId: input.postId,
+      reason: input.reason,
+      priority: input.priority,
+      moderator: username,
+      timestamp: auditContext.timestamp,
+    });
+
+    return c.json({ ok: true, flag }, 200);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    console.error('[ModPulse][flags] flag failed', {
+      subredditId,
+      postId: input.postId,
+      moderator: username,
+      error: errorMessage,
+      timestamp: auditContext.timestamp,
+    });
+
+    return c.json(
+      {
+        ok: false,
+        error: `Failed to flag post: ${errorMessage}`,
+      },
+      500
+    );
+  }
+});
+
+/**
+ * UNFLAG A POST
+ * Allows moderators to remove flags from posts
+ */
+api.post('/flags/unflag', async (c) => {
+  const subredditId = requireSubredditId();
+  const username = getCurrentModerator();
+  const auditContext = getAuditContext();
+
+  const input = await c.req.json<{
+    postId: string;
+  }>();
+
+  if (!input.postId) {
+    return c.json({ ok: false, error: 'Missing postId' }, 400);
+  }
+
+  try {
+    await unflagPost(subredditId, input.postId);
+
+    await logActivity({
+      subredditId,
+      action: 'Post flag removed',
+      moderator: username,
+      tone: 'good',
+      detail: `Post: ${input.postId}`,
+      timestamp: auditContext.timestamp,
+    });
+
+    console.log('[ModPulse][flags] post unflagged', {
+      subredditId,
+      postId: input.postId,
+      moderator: username,
+      timestamp: auditContext.timestamp,
+    });
+
+    return c.json({ ok: true }, 200);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    console.error('[ModPulse][flags] unflag failed', {
+      subredditId,
+      postId: input.postId,
+      moderator: username,
+      error: errorMessage,
+      timestamp: auditContext.timestamp,
+    });
+
+    return c.json(
+      {
+        ok: false,
+        error: `Failed to unflag post: ${errorMessage}`,
       },
       500
     );

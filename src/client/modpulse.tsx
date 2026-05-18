@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useTransition, useDeferredValue } from 'react';
+import React, { useEffect, useMemo, useState, useTransition, useDeferredValue, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import YAML from 'yaml';
 
@@ -349,10 +349,16 @@ const App = () => {
   const [showAllWarnings, setShowAllWarnings] = useState(false);
   const [pendingDeploy, setPendingDeploy] = useState(false);
   const [isRefreshing, startRefreshing] = useTransition();
+  const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; kind?: 'success' | 'error' | 'info' | 'warn' }>>([]);
   const deferredYaml = useDeferredValue(yamlDraft);
   const [juryPending, setJuryPending] = useState<DashboardPayload['livePreview'] | null>(null);
   const [juryResolved, setJuryResolved] = useState<any[] | null>(null);
   const [handoverHistory, setHandoverHistory] = useState<Array<{ author: string; timestamp: number; activeSituations?: string; notes?: string }>>([]);
+  const [flaggedPosts, setFlaggedPosts] = useState<Array<{ postId: string; reason: string; flaggerId: string; timestamp: number; priority: 'low' | 'medium' | 'high' }> | null>(null);
+  const [expandedSnapshotIds, setExpandedSnapshotIds] = useState<string[]>([]);
+
+  const pendingSelectRef = useRef<string | null>(null);
 
   const templates = payload?.templates ?? [];
   const activeRuleSet = ruleSet ?? payload?.ruleSet ?? null;
@@ -375,14 +381,15 @@ const App = () => {
     };
   }, [activeRuleSet, currentAnalysis?.warnings.length, payload?.analytics.deployCount]);
 
-  const commitRuleSet = (next: RuleSet) => {
+  const commitRuleSet = (next: RuleSet, selectRuleId?: string) => {
     startRefreshing(() => {
       setRuleSet(next);
+      pendingSelectRef.current = selectRuleId ?? null;
       setYamlDraft(serializeRuleSet(next));
       setAnalysis(null);
       setYamlError(null);
       setParseStatus('Visual editor synced');
-      setSelectedRuleId(next.rules[0]?.id ?? null);
+      setSelectedRuleId(selectRuleId ?? next.rules[0]?.id ?? null);
       setShowAllWarnings(false);
     });
   };
@@ -397,22 +404,40 @@ const App = () => {
     commitRuleSet(next);
   };
 
+  const showToast = (message: string, kind: 'success' | 'error' | 'info' | 'warn' = 'info') => {
+    const id = Date.now() + Math.floor(Math.random() * 1000);
+    setToasts((t) => [...t, { id, message, kind }]);
+    window.setTimeout(() => {
+      setToasts((t) => t.filter((x) => x.id !== id));
+    }, 5000);
+  };
+
   const loadInitial = async () => {
-    const nextPayload = await apiFetch<DashboardPayload>('/api/rules/dashboard');
-    setPayload(nextPayload);
-    setRuleSet(nextPayload.ruleSet);
-    setYamlDraft(nextPayload.yaml);
-    setAnalysis(nextPayload.analysis);
-    setSelectedRuleId(nextPayload.ruleSet.rules[0]?.id ?? null);
-    setNeedsDangerousConfirm(nextPayload.analysis.confirmationRequired);
-    // Also fetch operational dashboard (jury + handover history)
+    setIsLoadingDashboard(true);
+    try {
+      const nextPayload = await apiFetch<DashboardPayload>('/api/rules/dashboard');
+      setPayload(nextPayload);
+      setRuleSet(nextPayload.ruleSet);
+      setYamlDraft(nextPayload.yaml);
+      setAnalysis(nextPayload.analysis);
+      setSelectedRuleId(nextPayload.ruleSet.rules[0]?.id ?? null);
+      setNeedsDangerousConfirm(nextPayload.analysis.confirmationRequired);
+    } catch (err) {
+      showToast(`Dashboard refresh failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    }
+
+    // Also fetch operational dashboard (jury + handover history + flags)
     try {
       const op = await apiFetch<any>('/api/dashboard');
       setJuryPending(op.jury?.pending ?? []);
       setJuryResolved(op.jury?.resolved ?? []);
       setHandoverHistory(op.handover?.history ?? []);
+      setFlaggedPosts(op.flags?.posts ?? []);
+      showToast('Dashboard refreshed', 'success');
     } catch (err) {
-      // ignore
+      showToast(`Operational dashboard fetch failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    } finally {
+      setIsLoadingDashboard(false);
     }
   };
 
@@ -429,7 +454,8 @@ const App = () => {
         setYamlError(null);
         setParseStatus('YAML parsed successfully');
         setRuleSet(normalized);
-        setSelectedRuleId(normalized.rules[0]?.id ?? null);
+        setSelectedRuleId(pendingSelectRef.current ?? normalized.rules[0]?.id ?? null);
+        pendingSelectRef.current = null;
       } catch (error) {
         setYamlError(error instanceof Error ? error.message : String(error));
         setParseStatus('YAML has a parse error');
@@ -466,8 +492,7 @@ const App = () => {
     const next = cloneRuleSet(activeRuleSet);
     const rule = blankRule();
     next.rules.push(rule);
-    commitRuleSet(next);
-    setSelectedRuleId(rule.id);
+    commitRuleSet(next, rule.id);
   };
 
   const addTemplate = (template: RuleTemplate) => {
@@ -475,8 +500,7 @@ const App = () => {
     const next = cloneRuleSet(activeRuleSet);
     const rule = createRuleFromTemplate(template);
     next.rules.push(rule);
-    commitRuleSet(next);
-    setSelectedRuleId(rule.id);
+    commitRuleSet(next, rule.id);
   };
 
   const removeRule = (ruleId: string) => {
@@ -508,8 +532,7 @@ const App = () => {
     copy.createdAt = Date.now();
     copy.updatedAt = Date.now();
     next.rules.push(copy);
-    commitRuleSet(next);
-    setSelectedRuleId(copy.id);
+    commitRuleSet(next, copy.id);
   };
 
   const toggleAction = (action: RuleAction) => {
@@ -586,6 +609,7 @@ const App = () => {
       if (response.confirmationRequired) {
         setNeedsDangerousConfirm(true);
         setValidation((current) => current ? { ...current, analysis: response.analysis ?? current.analysis } : current);
+        showToast('Deploy requires confirmation for dangerous rules', 'warn');
         return;
       }
 
@@ -597,7 +621,12 @@ const App = () => {
         setShowAllWarnings(false);
         setDeployNote('');
         await loadInitial();
+        showToast('Rules deployed', 'success');
+      } else {
+        showToast('Deploy failed', 'error');
       }
+    } catch (err) {
+      showToast(`Deploy failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
     } finally {
       setPendingDeploy(false);
     }
@@ -628,10 +657,77 @@ const App = () => {
     }
   };
 
+  const flagPost = async (postId: string, reason: string, priority: 'low' | 'medium' | 'high' = 'medium') => {
+    try {
+      await apiFetch('/api/flags/flag', { postId, reason, priority });
+    } catch (err) {
+      console.warn('Flag failed', err);
+    }
+
+    // Refresh dashboard
+    try {
+      await loadInitial();
+    } catch (_) {
+      // ignore
+    }
+  };
+
+  const unflagPost = async (postId: string) => {
+    try {
+      await apiFetch('/api/flags/unflag', { postId });
+    } catch (err) {
+      console.warn('Unflag failed', err);
+    }
+
+    // Refresh dashboard
+    try {
+      await loadInitial();
+    } catch (_) {
+      // ignore
+    }
+  };
+
   const recentSnapshots = payload?.history ?? [];
+  const previousDeploymentRules = useMemo(() => {
+    return recentSnapshots.slice(0, 4).map((snapshot) => {
+      try {
+        const parsed = YAML.parse(snapshot.yaml) as { rules?: Array<{ name?: string; actions?: string[]; enabled?: boolean; severity?: string; description?: string }> } | null;
+        const rules = Array.isArray(parsed?.rules) ? parsed!.rules : [];
+        return {
+          ...snapshot,
+          rules: rules.slice(0, 4).map((rule) => ({
+            name: rule.name ?? 'Unnamed rule',
+            actions: Array.isArray(rule.actions) ? rule.actions : [],
+            enabled: rule.enabled ?? true,
+            severity: rule.severity ?? 'low',
+          })),
+        };
+      } catch {
+        return {
+          ...snapshot,
+          rules: [] as Array<{ name: string; actions: string[]; enabled: boolean; severity: string }>,
+        };
+      }
+    });
+  }, [recentSnapshots]);
+
+  const toggleSnapshotRules = (snapshotKey: string) => {
+    setExpandedSnapshotIds((current) => (
+      current.includes(snapshotKey)
+        ? current.filter((key) => key !== snapshotKey)
+        : [...current, snapshotKey]
+    ));
+  };
 
   return (
     <div className="appShell">
+      <div className="toastContainer">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast ${t.kind ?? 'info'}`}>
+            {t.message}
+          </div>
+        ))}
+      </div>
       <header className="topbar">
         <div>
           <div className="eyebrow">Programmable moderation infrastructure</div>
@@ -640,9 +736,13 @@ const App = () => {
         </div>
         <div className="topActions">
           <div className="statusChip">{payload?.meta.username ?? 'moderator'} · r/{payload?.meta.subredditId ?? 'unknown'}</div>
-          <button className="btn secondary" onClick={() => void loadInitial()} disabled={isRefreshing}>Refresh</button>
+          <button className="btn secondary" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>
+            {isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}
+          </button>
           <button className="btn secondary" onClick={() => void runTest()}>Live test</button>
-          <button className="btn primary" onClick={() => void deployRules(needsDangerousConfirm)} disabled={pendingDeploy}>Deploy rules</button>
+          <button className="btn primary" onClick={() => void deployRules(needsDangerousConfirm)} disabled={pendingDeploy || isLoadingDashboard}>
+            {pendingDeploy ? <><span className="spinner"/> Deploying…</> : 'Deploy rules'}
+          </button>
         </div>
       </header>
 
@@ -917,11 +1017,36 @@ const App = () => {
               )}
             </div>
             <div className="listBlock">
-              <h3>Snapshots</h3>
-              {recentSnapshots.length === 0 ? <div className="emptyState">No snapshots yet.</div> : recentSnapshots.map((snapshot) => (
-                <div key={`${snapshot.version}-${snapshot.updatedAt}`} className="listRow">
-                  <span>v{snapshot.version} · {relativeTime(snapshot.updatedAt)}</span>
-                  <span>{snapshot.updatedBy}</span>
+              <h3>Previous deployed rules</h3>
+              {previousDeploymentRules.length === 0 ? <div className="emptyState">No snapshots yet.</div> : previousDeploymentRules.map((snapshot) => (
+                <div key={`${snapshot.version}-${snapshot.updatedAt}`} className="snapshotCard">
+                  <div className="snapshotHeader">
+                    <strong>v{snapshot.version}</strong>
+                    <span>{relativeTime(snapshot.updatedAt)} · {snapshot.updatedBy}</span>
+                  </div>
+                  <div className="snapshotNote">{snapshot.note}</div>
+                  <button
+                    className="btn subtle snapshotToggle"
+                    onClick={() => toggleSnapshotRules(`${snapshot.version}-${snapshot.updatedAt}`)}
+                  >
+                    {expandedSnapshotIds.includes(`${snapshot.version}-${snapshot.updatedAt}`) ? 'Hide rules' : 'View rules'}
+                  </button>
+                  {expandedSnapshotIds.includes(`${snapshot.version}-${snapshot.updatedAt}`) ? (
+                    <div className="snapshotRules">
+                      {snapshot.rules.length === 0 ? (
+                        <div className="emptyState compact">No rule details available.</div>
+                      ) : snapshot.rules.map((rule) => (
+                        <div key={`${snapshot.version}-${rule.name}`} className="snapshotRuleRow">
+                          <div className="snapshotRuleTop">
+                            <strong>{rule.name}</strong>
+                            <span className={`statusPill ${rule.enabled ? 'good' : 'bad'}`}>{rule.enabled ? 'Enabled' : 'Disabled'}</span>
+                            <span className="statusPill">{rule.severity}</span>
+                          </div>
+                          <div className="snapshotRuleActions">Actions: {(rule.actions.length ? rule.actions : ['none']).join(', ')}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -948,7 +1073,7 @@ const App = () => {
                   <h2>Jury verdict board</h2>
                   <p>Pending cases sent to multi-mod review.</p>
                 </div>
-                <button className="btn subtle" onClick={() => void loadInitial()}>Refresh</button>
+                <button className="btn subtle" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>{isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}</button>
               </div>
               {(!juryPending || juryPending.length === 0) ? (
                 <div className="emptyState">No pending jury cases.</div>
@@ -968,6 +1093,12 @@ const App = () => {
                       <button className="btn danger" onClick={() => void voteOnCase(c.id, 'remove')}>Vote Remove</button>
                       <button className="btn" onClick={() => void voteOnCase(c.id, 'approve')}>Vote Approve</button>
                       <button className="btn subtle" onClick={() => void voteOnCase(c.id, 'abstain')}>Abstain</button>
+                      <button className="btn subtle" onClick={() => {
+                        const reason = prompt('Flag reason:', c.reason || '');
+                        if (reason) {
+                          void flagPost(c.postId, reason, 'medium');
+                        }
+                      }}>📍 Flag</button>
                     </div>
                   </div>
                 ))
@@ -989,13 +1120,42 @@ const App = () => {
               )}
             </article>
 
+            <article className="panel flaggedPostsPanel">
+              <div className="panelHeader compact">
+                <div>
+                  <h2>Flagged posts</h2>
+                  <p>Posts marked for review by moderators.</p>
+                </div>
+                <button className="btn subtle" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>{isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}</button>
+              </div>
+              {(!flaggedPosts || flaggedPosts.length === 0) ? (
+                <div className="emptyState">No flagged posts.</div>
+              ) : (
+                flaggedPosts.map((post) => (
+                  <div key={post.postId} className={`flagCard flagPriority${post.priority.charAt(0).toUpperCase() + post.priority.slice(1)}`}>
+                    <div className="flagHeader">
+                      <strong>{post.postId}</strong>
+                      <span className={`priorityBadge ${post.priority}`}>{post.priority.toUpperCase()}</span>
+                    </div>
+                    <div className="flagBody">
+                      <div className="flagReason">{post.reason}</div>
+                      <div className="flagMeta">Flagged by {post.flaggerId} · {relativeTime(post.timestamp)}</div>
+                    </div>
+                    <div className="flagActions">
+                      <button className="btn subtle" onClick={() => void unflagPost(post.postId)}>Unflag</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </article>
+
             <article className="panel handoverHistoryPanel">
               <div className="panelHeader compact">
                 <div>
                   <h2>Handover history</h2>
                   <p>Recent shift handover cards.</p>
                 </div>
-                <button className="btn subtle" onClick={() => void loadInitial()}>Refresh</button>
+                <button className="btn subtle" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>{isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}</button>
               </div>
               {(handoverHistory ?? []).length === 0 ? (
                 <div className="emptyState">No handover history yet.</div>
