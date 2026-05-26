@@ -1,26 +1,35 @@
 <div align="center">
 
-<br/>
-
-```
+<pre>
 ███╗   ███╗ ██████╗ ██████╗ ██████╗ ██╗   ██╗██╗     ███████╗███████╗
 ████╗ ████║██╔═══██╗██╔══██╗██╔══██╗██║   ██║██║     ██╔════╝██╔════╝
-██╔████╔██║██║   ██║██║  ██║██████╔╝██║   ██║██║     ███████╗█████╗  
-██║╚██╔╝██║██║   ██║██║  ██║██╔═══╝ ██║   ██║██║     ╚════██║██╔══╝  
+██╔████╔██║██║   ██║██║  ██║██████╔╝██║   ██║██║     ███████╗█████╗
+██║╚██╔╝██║██║   ██║██║  ██║██╔═══╝ ██║   ██║██║     ╚════██║██╔══╝
 ██║ ╚═╝ ██║╚██████╔╝██████╔╝██║     ╚██████╔╝███████╗███████║███████╗
 ╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚═╝      ╚═════╝ ╚══════╝╚══════╝╚══════╝
-```
+</pre>
 
 ### **The Reddit Moderation Command Center**
 
 *Shift handovers. Jury verdicts. Programmable rules. All in one place.*
 
-<br/>
+<br>
 
-[![Built with Devvit](https://img.shields.io/badge/Built%20with-Devvit-FF4500?style=for-the-badge&logo=reddit&logoColor=white)](https://developers.reddit.com/docs/devvit)
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Redis](https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
-[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://react.dev/)
+<a href="https://developers.reddit.com/docs/devvit">
+  <img src="https://img.shields.io/badge/Built%20with-Devvit-FF4500?style=for-the-badge&logo=reddit&logoColor=white">
+</a>
+
+<a href="https://www.typescriptlang.org/">
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white">
+</a>
+
+<a href="https://redis.io/">
+  <img src="https://img.shields.io/badge/Redis-DC382D?style=for-the-badge&logo=redis&logoColor=white">
+</a>
+
+<a href="https://react.dev/">
+  <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB">
+</a>
 
 </div>
 
