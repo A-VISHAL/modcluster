@@ -54,8 +54,13 @@ export type ModerationOutcome = {
 async function addRedditModeratorNote(
   postId: string,
   note: string,
-  subredditId: string
+  subredditId: string,
+  testMode?: boolean
 ): Promise<boolean> {
+  if (testMode) {
+    console.log('[ModPulse][moderation] [MOD_NOTE] TEST MODE - Mocking note addition', { postId, note });
+    return true;
+  }
   try {
     console.log('[ModPulse][moderation] [MOD_NOTE] Fetching post for note addition', {
       postId,
@@ -102,7 +107,11 @@ async function addRedditModeratorNote(
 /**
  * Remove a Reddit post immediately.
  */
-async function removePost(postId: string, subredditId: string): Promise<boolean> {
+async function removePost(postId: string, subredditId: string, testMode?: boolean): Promise<boolean> {
+  if (testMode) {
+    console.log('[ModPulse][moderation] [REMOVE] TEST MODE - Mocking post removal', { postId, subredditId });
+    return true;
+  }
   try {
     console.log('[ModPulse][moderation] ========== REMOVAL PHASE: INIT ==========', {
       postId,
@@ -312,7 +321,11 @@ async function removePost(postId: string, subredditId: string): Promise<boolean>
 /**
  * Lock a post to prevent new comments.
  */
-async function lockPost(postId: string, subredditId: string): Promise<boolean> {
+async function lockPost(postId: string, subredditId: string, testMode?: boolean): Promise<boolean> {
+  if (testMode) {
+    console.log('[ModPulse][moderation] [LOCK] TEST MODE - Mocking post lock', { postId, subredditId });
+    return true;
+  }
   try {
     console.log('[ModPulse][moderation] [LOCK] Attempting post lock', {
       postId,
@@ -418,6 +431,7 @@ export async function executeRemovalVerdict(input: {
   displayModerator: string;
   executingModerator: string;
   devMode?: boolean;
+  testMode?: boolean;
 }): Promise<ModerationOutcome> {
   const now = Date.now();
 
@@ -448,9 +462,9 @@ export async function executeRemovalVerdict(input: {
     });
 
     // Execute removal using the real authenticated moderator context
-    const removed = await removePost(input.postId, input.subredditId);
+    const removed = await removePost(input.postId, input.subredditId, input.testMode);
     
-    if (!removed) {
+    if (!removed && !input.testMode) {
       console.error('[ModPulse][moderation] [REMOVE_VERDICT ✗] removePost() returned false', {
         postId: input.postId,
         subredditId: input.subredditId,
@@ -481,7 +495,8 @@ export async function executeRemovalVerdict(input: {
     const noteAdded = await addRedditModeratorNote(
       input.postId,
       noteText,
-      input.subredditId
+      input.subredditId,
+      input.testMode
     );
 
     console.log('[ModPulse][moderation] [REMOVE_VERDICT] Moderator note result', {
@@ -496,6 +511,7 @@ export async function executeRemovalVerdict(input: {
       tone: 'bad',
       detail: `${input.postId} • ${input.reason}${input.displayModerator !== input.executingModerator ? ` • Executor: ${input.executingModerator}` : ''}`,
       timestamp: now,
+      testMode: input.testMode,
     });
 
     console.log('[ModPulse][moderation] ========== VERDICT EXECUTION: REMOVE ✓ SUCCESS ==========', {
@@ -546,6 +562,7 @@ export async function executeRemovalVerdict(input: {
       tone: 'bad',
       detail: `${input.postId} • Error: ${errorMessage}`,
       timestamp: now,
+      testMode: input.testMode,
     });
 
     return {
@@ -575,6 +592,7 @@ export async function executeApprovalVerdict(input: {
   reason: string;
   displayModerator: string;
   executingModerator: string;
+  testMode?: boolean;
 }): Promise<ModerationOutcome> {
   const now = Date.now();
 
@@ -602,6 +620,7 @@ export async function executeApprovalVerdict(input: {
       tone: 'good',
       detail: `${input.postId} • Post meets community standards${input.displayModerator !== input.executingModerator ? ` • Executor: ${input.executingModerator}` : ''}`,
       timestamp: now,
+      testMode: input.testMode,
     });
 
     console.log('[ModPulse][moderation] ========== VERDICT EXECUTION: APPROVE ✓ SUCCESS ==========', {
@@ -661,6 +680,7 @@ export async function executeImmediateAction(input: {
   reason: string;
   lockComments?: boolean;
   moderator: string;
+  testMode?: boolean;
 }): Promise<ModerationOutcome> {
   const now = Date.now();
 
@@ -682,9 +702,9 @@ export async function executeImmediateAction(input: {
 
     // Execute removal if requested
     if (input.actionType === 'remove' || input.actionType === 'both') {
-      const removed = await removePost(input.postId, input.subredditId);
+      const removed = await removePost(input.postId, input.subredditId, input.testMode);
       details.removed = removed;
-      if (removed) {
+      if (removed || input.testMode) {
         actionMessage += 'Post removed. ';
       } else {
         throw new Error('Failed to remove post');
@@ -696,9 +716,9 @@ export async function executeImmediateAction(input: {
       (input.actionType === 'lock' || input.actionType === 'both') &&
       input.lockComments !== false
     ) {
-      const locked = await lockPost(input.postId, input.subredditId);
+      const locked = await lockPost(input.postId, input.subredditId, input.testMode);
       details.locked = locked;
-      if (locked) {
+      if (locked || input.testMode) {
         actionMessage += 'Post locked. ';
       } else {
         throw new Error('Failed to lock post');
@@ -716,7 +736,8 @@ export async function executeImmediateAction(input: {
     const noteAdded = await addRedditModeratorNote(
       input.postId,
       noteText,
-      input.subredditId
+      input.subredditId,
+      input.testMode
     );
     details.noteAdded = noteAdded;
 
@@ -731,6 +752,7 @@ export async function executeImmediateAction(input: {
       tone,
       detail: `${input.postId} • ${input.reason}`,
       timestamp: now,
+      testMode: input.testMode,
     });
 
     console.log('[ModPulse][moderation] Immediate action completed', {
@@ -765,6 +787,7 @@ export async function executeImmediateAction(input: {
       tone: 'bad',
       detail: `${input.postId} • Error: ${errorMessage}`,
       timestamp: now,
+      testMode: input.testMode,
     });
 
     return {

@@ -407,6 +407,7 @@ const buildAiOutput = (input: {
 };
 
 api.get('/dashboard', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const now = Date.now();
   const subredditId = context.subredditId ?? null;
   const username = context.username ?? null;
@@ -439,13 +440,13 @@ api.get('/dashboard', async (c) => {
     await cleanupLegacyDemoQueueEntries(subredditId);
 
     const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw, flagsRawFetched, flagStatsRawFetched] = await Promise.all([
-      fetchActiveHandover(subredditId),
-      fetchHandoverHistory(subredditId, 20),
-      fetchActiveCases(subredditId, 20),
-      fetchResolvedCases(subredditId, 20),
-      fetchRecentActivity(subredditId, 80),
-      getFlaggedPosts(subredditId),
-      getFlagStats(subredditId),
+      fetchActiveHandover(subredditId, isTestMode),
+      fetchHandoverHistory(subredditId, 20, isTestMode),
+      fetchActiveCases(subredditId, 20, isTestMode),
+      fetchResolvedCases(subredditId, 20, isTestMode),
+      fetchRecentActivity(subredditId, 80, isTestMode),
+      getFlaggedPosts(subredditId, isTestMode),
+      getFlagStats(subredditId, isTestMode),
     ]);
 
     activeHandover = activeHandoverRaw;
@@ -560,6 +561,7 @@ api.get('/dashboard', async (c) => {
 });
 
 api.post('/handover', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = getCurrentModerator();
   const auditContext = getAuditContext();
@@ -585,7 +587,7 @@ api.post('/handover', async (c) => {
     notes: input.notes ?? '',
   });
 
-  await saveHandover(subredditId, card);
+  await saveHandover(subredditId, card, isTestMode);
 
   // Log the handover creation for auditability
   await logActivity({
@@ -595,6 +597,7 @@ api.post('/handover', async (c) => {
     tone: 'good',
     detail: `Handover recorded for shift transition • Situations: ${card.activeSituations?.substring(0, 40) || 'none'}...`,
     timestamp: card.timestamp,
+    testMode: isTestMode,
   });
 
   console.log('[ModPulse][security] Handover successfully persisted', {
@@ -607,6 +610,7 @@ api.post('/handover', async (c) => {
 });
 
 api.post('/jury/case', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = getCurrentModerator();
   const auditContext = getAuditContext();
@@ -649,7 +653,7 @@ api.post('/jury/case', async (c) => {
     juryCase.contextNotes = `${juryCase.contextNotes}\n\n[Priority: ${priority}]`.trim();
   }
 
-  await saveNewJuryCase(juryCase);
+  await saveNewJuryCase(juryCase, isTestMode);
 
   console.log('[ModPulse][security] jury case created', {
     caseId: juryCase.id,
@@ -663,6 +667,7 @@ api.post('/jury/case', async (c) => {
 });
 
 api.post('/jury/vote', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = getCurrentModerator();
   const auditContext = getAuditContext();
@@ -675,7 +680,7 @@ api.post('/jury/vote', async (c) => {
   }>();
 
   // Check if dev mode is being requested
-  const isDevModeRequested = input.devMode === true;
+  const isDevModeRequested = input.devMode === true || isTestMode;
   const isDevelopmentEnvironment = process.env.NODE_ENV !== 'production';
 
   let effectiveModeratorName = username;
@@ -720,7 +725,7 @@ api.post('/jury/vote', async (c) => {
   });
 
   // Validate case exists
-  const existingCase = await fetchJuryCase(input.caseId);
+  const existingCase = await fetchJuryCase(input.caseId, isTestMode);
   if (!existingCase) {
     console.warn('[ModPulse][security] vote rejected - case missing', {
       caseId: input.caseId,
@@ -828,6 +833,7 @@ api.post('/jury/vote', async (c) => {
  * Security: Full subreddit-scoped validation + activity logging
  */
 api.post('/moderation/immediate', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = getCurrentModerator();
   const auditContext = getAuditContext();
@@ -874,6 +880,7 @@ api.post('/moderation/immediate', async (c) => {
       reason,
       lockComments,
       moderator: username,
+      testMode: isTestMode,
     });
 
     console.log('[ModPulse][security] immediate action completed', {
@@ -932,6 +939,7 @@ api.post('/moderation/immediate', async (c) => {
  * Allows moderators to mark posts for review without jury deliberation
  */
 api.post('/flags/flag', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = getCurrentModerator();
   const auditContext = getAuditContext();
@@ -952,7 +960,8 @@ api.post('/flags/flag', async (c) => {
       input.postId,
       input.reason,
       username,
-      input.priority ?? 'medium'
+      input.priority ?? 'medium',
+      isTestMode
     );
 
     await logActivity({
@@ -962,6 +971,7 @@ api.post('/flags/flag', async (c) => {
       tone: 'warn',
       detail: `Post: ${input.postId} • Reason: ${input.reason} • Priority: ${input.priority ?? 'medium'}`,
       timestamp: auditContext.timestamp,
+      testMode: isTestMode,
     });
 
     console.log('[ModPulse][flags] post flagged', {
@@ -1000,6 +1010,7 @@ api.post('/flags/flag', async (c) => {
  * Allows moderators to remove flags from posts
  */
 api.post('/flags/unflag', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = getCurrentModerator();
   const auditContext = getAuditContext();
@@ -1013,7 +1024,7 @@ api.post('/flags/unflag', async (c) => {
   }
 
   try {
-    await unflagPost(subredditId, input.postId);
+    await unflagPost(subredditId, input.postId, isTestMode);
 
     await logActivity({
       subredditId,
@@ -1022,6 +1033,7 @@ api.post('/flags/unflag', async (c) => {
       tone: 'good',
       detail: `Post: ${input.postId}`,
       timestamp: auditContext.timestamp,
+      testMode: isTestMode,
     });
 
     console.log('[ModPulse][flags] post unflagged', {

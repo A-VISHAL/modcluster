@@ -20,7 +20,7 @@ export type ActivityEvent = {
   timestamp: number;
 };
 
-export const activityKey = (subredditId: string) => `activity:${subredditId}`;
+export const activityKey = (subredditId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}activity:${subredditId}`;
 
 const MAX_ACTIVITY_ITEMS = 40;
 
@@ -41,8 +41,8 @@ const parseActivity = (payload: string): ActivityEvent | null => {
   }
 };
 
-const trimActivityQueue = async (subredditId: string) => {
-  const key = activityKey(subredditId);
+const trimActivityQueue = async (subredditId: string, testMode?: boolean) => {
+  const key = activityKey(subredditId, testMode);
   const count = await redis.zCard(key);
 
   if (count > MAX_ACTIVITY_ITEMS) {
@@ -58,6 +58,7 @@ export async function logActivity(input: {
   tone?: ActivityTone;
   timestamp?: number;
   id?: string;
+  testMode?: boolean | undefined;
 }): Promise<ActivityEvent> {
   const event: ActivityEvent = {
     id: input.id ?? createActivityId(),
@@ -77,26 +78,27 @@ export async function logActivity(input: {
     timestamp: event.timestamp,
   });
 
-  await redis.zAdd(activityKey(event.subredditId), {
+  await redis.zAdd(activityKey(event.subredditId, input.testMode), {
     score: event.timestamp,
     member: JSON.stringify(event),
   });
 
   console.log('[ModPulse][activity] redis zAdd complete', {
-    key: activityKey(event.subredditId),
+    key: activityKey(event.subredditId, input.testMode),
     id: event.id,
   });
 
-  await trimActivityQueue(event.subredditId);
+  await trimActivityQueue(event.subredditId, input.testMode);
 
   return event;
 }
 
 export async function fetchRecentActivity(
   subredditId: string,
-  limit = 15
+  limit = 15,
+  testMode?: boolean
 ): Promise<ActivityEvent[]> {
-  const items = await redis.zRange(activityKey(subredditId), 0, limit - 1, {
+  const items = await redis.zRange(activityKey(subredditId, testMode), 0, limit - 1, {
     by: 'rank',
     reverse: true,
   });
