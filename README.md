@@ -1,128 +1,205 @@
-# 🛡️ ModPulse AI
-### The Reddit Moderation Command Center
+# ModCluster
+## Collaborative Moderation Infrastructure for Reddit
 
-*Shift handovers. Jury verdicts. Programmable rules. All in one place.*
+ModCluster is a Devvit-native moderation platform designed for Reddit moderator teams.
+
+It combines moderation automation, collaborative review workflows, and operational coordination into a single moderation workspace built directly inside Reddit.
 
 Built with Devvit · TypeScript · React · Redis
 
 ---
 
-## The Problem
+## Overview
 
-Moderation is a team sport. The tools aren't built that way.
+Moderating active communities is often fragmented.
 
-| Pain Point | What Actually Happens |
-|---|---|
-| **Context loss** | Mod A logs off. Mod B starts from scratch. Same user investigated twice. |
-| **Solo decisions** | One mod removes a borderline post. No audit trail. Appeals go nowhere. |
-| **Risky automation** | YAML copied blindly. Rules deployed untested. Subreddit breaks. |
+Moderator teams face recurring challenges:
 
-ModPulse fixes all three.
+- loss of context between moderator shifts
+- inconsistent moderation decisions
+- repetitive manual moderation work
+- risky automation deployed without testing
+- limited visibility into moderation activity
+
+ModCluster addresses these problems through coordinated moderation workflows, programmable moderation rules, and real-time operational insights.
+
+Rather than acting as a simple moderation dashboard, ModCluster functions as moderation infrastructure designed for teams.
 
 ---
 
-## ▶ See It In Action
+## What ModCluster Does
 
-📺 **[VIDEO PLACEHOLDER — How ModPulse Works]**
-*A 2-minute walkthrough of shift handovers, jury verdicts, and rule deployment.*
-*→ Replace this with your YouTube link once recorded.*
+ModCluster provides moderators with a centralized moderation workspace where they can:
+
+- configure moderation rules
+- test and validate moderation logic
+- review operational insights
+- manage moderation workflows
+- coordinate on sensitive cases
+- track moderation activity
+- preserve moderation context
+
+All moderation state is backed by Redis and integrated directly with Reddit through Devvit APIs.
 
 ---
 
 ## Core Features
 
-### 🔁 Shift Handover
-*Hospital-style moderation continuity.*
+### Programmable Moderation Rules
 
-Outgoing mods submit active situations, watchlists, and escalation notes. Incoming mods open ModPulse and see exactly where things stand — latest context, unresolved situations, users to watch. No DMs. No guesswork.
+Moderators can build configurable moderation rules using:
 
-> 📸 Screenshot: `docs/screenshots/shift-handover.png`
-![Shift Handover](docs/screenshots/shift-handover.png)
+- visual editor
+- YAML editor
+- reusable templates
 
----
+Rules can evaluate:
 
-### ⚖️ Jury Verdict Board
-*Borderline calls decided by consensus, not whoever clicked fastest.*
+- account age
+- karma
+- posting frequency
+- repeated links
+- suspicious domains
+- keyword triggers
+- spam indicators
+- moderation risk patterns
 
-Flag a post → cite a rule → open a timed jury case. Mods vote Remove / Approve / Abstain. Action only triggers when the team agrees. Every verdict is permanently logged with rule citations.
+Supported actions include:
 
-> 📸 Screenshot: `docs/screenshots/jury-board.png`
-![Jury Verdict Board](docs/screenshots/jury-board.png)
+- remove content
+- filter to review queue
+- notify moderators
+- add moderator notes
+- lock threads
+- escalate for review
 
----
-
-### 🤖 Programmable Moderation Rules
-*AutoModerator, but you can actually understand it.*
-
-Build rules with a visual editor or raw YAML. Conditions include account age, karma, posting frequency, toxicity signals, and ban-evasion patterns. Actions range from queue filter to temp ban.
-
-> 📸 Screenshot: `docs/screenshots/mod-rules.png`
-![Programmable Rules](docs/screenshots/mod-rules.png)
-
----
-
-### 🧪 Live Rule Testing
-*Deploy nothing you haven't already seen work.*
-
-Test any rule against live subreddit content before it goes live. See exactly which posts match, why they matched, and what action would fire.
-
-> 📸 Screenshot: `docs/screenshots/rule-testing.png`
-![Live Rule Testing](docs/screenshots/rule-testing.png)
+This allows moderators to customize moderation logic according to subreddit policies.
 
 ---
 
-### ⚠️ Conflict Detection
-*Your moderation logic, validated before it does damage.*
+### Validation and Live Testing
 
-ModPulse catches duplicate rules, conflicting logic, dangerous removals, and shadowed conditions. Risk scoring surfaces problems before deployment.
+Before deployment, ModCluster validates moderation logic.
 
-> 📸 Screenshot: `docs/screenshots/conflict-detection.png`
-![Conflict Detection](docs/screenshots/conflict-detection.png)
+The system detects:
 
----
+- duplicate rules
+- conflicting logic
+- dangerous removals
+- broad keyword matches
+- deployment risks
 
-### 🔄 One-Click Deploy + Rollback
-*Every deployment is reversible.*
+Rules can be tested against subreddit content before deployment.
 
-Redis snapshots on every deploy. If something breaks, roll back instantly. Automation finally has an undo button.
+Moderators can preview:
 
-> 📸 Screenshot: `docs/screenshots/deploy-rollback.png`
-![Deploy and Rollback](docs/screenshots/deploy-rollback.png)
+- matched posts
+- triggered conditions
+- predicted actions
+- moderation outcomes
 
----
-
-### 📊 Operational Dashboard
-*Live moderation command center.*
-
-Queue pressure, rule analytics, repeated offenders, flagged users, workload, deployment history — all surfaced as explainable insights so moderators understand community health without reading raw logs.
-
-> 📸 Screenshot: `docs/screenshots/dashboard.png`
-![Dashboard](docs/screenshots/dashboard.png)
+This creates safer and more explainable moderation automation.
 
 ---
 
-## How It Works
+### Deployment and Rollback
 
-**Shift Handover**
-1. Outgoing mod opens Subreddit Mod Menu → clicks "End Shift & Hand Over"
-2. Fills in open situations, users to watch, priority posts, and notes
-3. ModPulse writes context to Redis — persists across sessions
-4. Incoming mod clicks "View Current Handover" and sees everything instantly
+ModCluster creates Redis snapshots during deployment.
 
-**Jury Verdict Board**
-1. Mod flags a borderline post → selects rule violated → sets vote deadline
-2. All mods see the case and cast votes: Remove / Approve / Abstain
-3. ModPulse checks threshold after every vote
-4. 2× Remove → `reddit.remove()` fires automatically
-5. 2× Approve → `reddit.approve()` fires automatically
-6. No consensus by deadline → escalated via modmail
+Moderators can:
 
-**Rule Deployment**
-1. Mod builds a rule in the visual editor or YAML
-2. ModPulse validates for conflicts, duplicates, and risk
-3. Rule tested against live subreddit content
-4. One-click deploy — Redis snapshot created
-5. If anything breaks → instant rollback
+- deploy moderation rules
+- track deployment history
+- restore earlier configurations
+- rollback instantly
+
+This ensures moderation changes remain reversible and safe.
+
+---
+
+### Operational Dashboard
+
+The dashboard provides live moderation visibility.
+
+Moderators can monitor:
+
+- queue pressure
+- moderation activity
+- flagged users
+- workload indicators
+- rule analytics
+- operational insights
+- moderation history
+
+Insights help moderators understand community conditions without reviewing raw logs.
+
+---
+
+### Collaborative Moderation
+
+ModCluster supports collaborative workflows for sensitive moderation situations.
+
+#### Jury Review
+
+Borderline moderation cases can be escalated to a Jury Board.
+
+Workflow:
+
+Post flagged  
+→ Case opened  
+→ Moderators vote  
+→ Consensus reached  
+→ Action executed
+
+Votes include:
+
+- Approve
+- Remove
+- Abstain
+
+Consensus-based moderation improves transparency and reduces unilateral decision-making.
+
+---
+
+### Shift Handover
+
+Moderator teams can preserve operational context across shifts.
+
+Outgoing moderators can submit:
+
+- active situations
+- users to monitor
+- priority posts
+- escalation notes
+- moderation guidance
+
+Incoming moderators immediately see current moderation status and unresolved situations.
+
+This reduces duplicated investigation and improves team coordination.
+
+---
+
+## How ModCluster Solves Moderation Problems
+
+Traditional moderation tools focus on individual actions.
+
+ModCluster focuses on moderation workflows.
+
+Instead of moderators working independently, ModCluster creates:
+
+- shared moderation context
+- safer automation deployment
+- collaborative decision-making
+- transparent moderation history
+- operational visibility
+
+This helps moderation teams:
+
+- save moderation time
+- reduce repetitive review work
+- avoid context loss
+- reduce moderator burnout
+- maintain more consistent moderation decisions
 
 ---
 
@@ -130,34 +207,28 @@ Queue pressure, rule analytics, repeated offenders, flagged users, workload, dep
 
 | Layer | Stack |
 |---|---|
-| **Frontend** | React · Devvit Web · TypeScript · Vite |
-| **Backend** | Devvit Handlers · Triggers · Scheduler · Hono · Reddit API |
-| **Storage** | Redis — `handover:{subId}:*` · `jury:{subId}:*` · `rules:{subId}:*` · `activity:{subId}:*` |
+| Frontend | React · Devvit Web · TypeScript · Vite |
+| Backend | Devvit Handlers · Triggers · Scheduler · Hono |
+| Storage | Redis |
+| Platform | Devvit · Reddit API |
 
-Fully Devvit-native. No external database. No infrastructure to manage.
+Redis acts as the operational source of truth for:
+
+- handovers
+- moderation rules
+- jury workflows
+- activity history
+- analytics
+
+Fully Devvit-native with no external infrastructure required.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install Devvit CLI
 npm install -g devvit
-
-# Clone and install
-git clone https://github.com/your-org/modpulse-ai
-cd modpulse-ai && npm install
-
-# Log in
+npm install
 devvit login
-
-# Develop locally
-devvit dev r/yourTestSubreddit
-
-# Deploy
+devvit playtest
 devvit upload
-```
-
----
-
-*ModPulse AI — Built for mod teams who take moderation seriously.*
