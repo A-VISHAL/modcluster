@@ -162,6 +162,13 @@ button:disabled {
   border-color: var(--stroke);
 }
 
+.btn.test-mode-active {
+  background: var(--accent-3);
+  color: #fff;
+  border-color: rgba(70, 209, 96, 0.4);
+  box-shadow: 0 0 12px rgba(70, 209, 96, 0.2);
+}
+
 .heroGrid {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.9fr);

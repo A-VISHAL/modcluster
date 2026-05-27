@@ -12,8 +12,8 @@ export interface FlaggedPost {
   priority: 'low' | 'medium' | 'high';
 }
 
-const FLAGS_KEY = (subredditId: string) => `flags:${subredditId}:posts`;
-const FLAG_DETAIL_KEY = (subredditId: string, postId: string) => `flags:${subredditId}:${postId}`;
+const FLAGS_KEY = (subredditId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}flags:${subredditId}:posts`;
+const FLAG_DETAIL_KEY = (subredditId: string, postId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}flags:${subredditId}:${postId}`;
 
 /**
  * Flag a post for review
@@ -23,7 +23,8 @@ export const flagPost = async (
   postId: string,
   reason: string,
   flaggerId: string,
-  priority: 'low' | 'medium' | 'high' = 'medium'
+  priority: 'low' | 'medium' | 'high' = 'medium',
+  testMode?: boolean
 ): Promise<FlaggedPost> => {
   const flag: FlaggedPost = {
     postId,
@@ -35,13 +36,13 @@ export const flagPost = async (
 
   try {
     // Add to sorted set (sorted by timestamp for easy retrieval)
-    await redis.zAdd(FLAGS_KEY(subredditId), {
+    await redis.zAdd(FLAGS_KEY(subredditId, testMode), {
       member: postId,
       score: Date.now(),
     });
 
     // Store full flag details
-    await redis.set(FLAG_DETAIL_KEY(subredditId, postId), JSON.stringify(flag));
+    await redis.set(FLAG_DETAIL_KEY(subredditId, postId, testMode), JSON.stringify(flag));
 
     return flag;
   } catch (error) {
@@ -57,11 +58,11 @@ export const flagPost = async (
 /**
  * Unflag a post
  */
-export const unflagPost = async (subredditId: string, postId: string): Promise<void> => {
+export const unflagPost = async (subredditId: string, postId: string, testMode?: boolean): Promise<void> => {
   try {
     await Promise.all([
-      redis.zRem(FLAGS_KEY(subredditId), [postId]),
-      redis.del(FLAG_DETAIL_KEY(subredditId, postId)),
+      redis.zRem(FLAGS_KEY(subredditId, testMode), [postId]),
+      redis.del(FLAG_DETAIL_KEY(subredditId, postId, testMode)),
     ]);
   } catch (error) {
     console.error('[Flags] Error unflagging post', {
@@ -75,9 +76,9 @@ export const unflagPost = async (subredditId: string, postId: string): Promise<v
 /**
  * Get all flagged posts for a subreddit
  */
-export const getFlaggedPosts = async (subredditId: string): Promise<FlaggedPost[]> => {
+export const getFlaggedPosts = async (subredditId: string, testMode?: boolean): Promise<FlaggedPost[]> => {
   try {
-    const items = await redis.zRange(FLAGS_KEY(subredditId), 0, -1, {
+    const items = await redis.zRange(FLAGS_KEY(subredditId, testMode), 0, -1, {
       by: 'rank',
       reverse: true, // Most recent first
     });
@@ -89,7 +90,7 @@ export const getFlaggedPosts = async (subredditId: string): Promise<FlaggedPost[
     const flagDetails = await Promise.all(
       items.map((item: { member: string }) =>
         redis
-          .get(FLAG_DETAIL_KEY(subredditId, item.member))
+          .get(FLAG_DETAIL_KEY(subredditId, item.member, testMode))
           .then((data) => {
             try {
               return data ? (JSON.parse(data) as FlaggedPost) : null;
@@ -114,9 +115,9 @@ export const getFlaggedPosts = async (subredditId: string): Promise<FlaggedPost[
 /**
  * Get a specific flagged post
  */
-export const getFlaggedPost = async (subredditId: string, postId: string): Promise<FlaggedPost | null> => {
+export const getFlaggedPost = async (subredditId: string, postId: string, testMode?: boolean): Promise<FlaggedPost | null> => {
   try {
-    const data = await redis.get(FLAG_DETAIL_KEY(subredditId, postId));
+    const data = await redis.get(FLAG_DETAIL_KEY(subredditId, postId, testMode));
     if (!data) return null;
     return JSON.parse(data) as FlaggedPost;
   } catch (error) {
@@ -132,13 +133,13 @@ export const getFlaggedPost = async (subredditId: string, postId: string): Promi
 /**
  * Clear all flags for a subreddit (e.g., when handing over or completing shift)
  */
-export const clearFlags = async (subredditId: string): Promise<void> => {
+export const clearFlags = async (subredditId: string, testMode?: boolean): Promise<void> => {
   try {
-    const flagsKey = FLAGS_KEY(subredditId);
+    const flagsKey = FLAGS_KEY(subredditId, testMode);
     const items = await redis.zRange(flagsKey, 0, -1, { by: 'rank' });
 
     if (items && items.length > 0) {
-      const detailKeys = items.map((item: { member: string }) => FLAG_DETAIL_KEY(subredditId, item.member));
+      const detailKeys = items.map((item: { member: string }) => FLAG_DETAIL_KEY(subredditId, item.member, testMode));
       if (detailKeys.length > 0) {
         await redis.del(...detailKeys);
       }
@@ -157,10 +158,11 @@ export const clearFlags = async (subredditId: string): Promise<void> => {
  * Get flag count by priority
  */
 export const getFlagStats = async (
-  subredditId: string
+  subredditId: string,
+  testMode?: boolean
 ): Promise<{ total: number; high: number; medium: number; low: number }> => {
   try {
-    const flags = await getFlaggedPosts(subredditId);
+    const flags = await getFlaggedPosts(subredditId, testMode);
     return {
       total: flags.length,
       high: flags.filter((f) => f.priority === 'high').length,

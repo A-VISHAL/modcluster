@@ -302,18 +302,31 @@ const serializeRuleSet = (ruleSet: RuleSet) =>
     { indent: 2 }
   );
 
+let isGlobalTestModeActive = false;
+
 const apiFetch = async <T,>(path: string, body?: unknown): Promise<T> => {
+  const headers: Record<string, string> = {};
+  if (body) {
+    headers['content-type'] = 'application/json';
+  }
+  if (isGlobalTestModeActive) {
+    headers['X-ModPulse-Test-Mode'] = 'true';
+  }
+
   const response = await fetch(path, {
     method: body ? 'POST' : 'GET',
-    headers: body ? { 'content-type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
 
   return response.json() as Promise<T>;
 };
 
+let serverTimeOffset = 0;
+
 const relativeTime = (timestamp: number) => {
-  const deltaSeconds = Math.max(1, Math.floor((Date.now() - timestamp) / 1000));
+  const adjustedNow = Date.now() + serverTimeOffset;
+  const deltaSeconds = Math.max(1, Math.floor((adjustedNow - timestamp) / 1000));
   if (deltaSeconds < 60) return `${deltaSeconds}s ago`;
   const deltaMinutes = Math.floor(deltaSeconds / 60);
   if (deltaMinutes < 60) return `${deltaMinutes}m ago`;
@@ -357,6 +370,8 @@ const App = () => {
   const [handoverHistory, setHandoverHistory] = useState<Array<{ author: string; timestamp: number; activeSituations?: string; notes?: string }>>([]);
   const [flaggedPosts, setFlaggedPosts] = useState<Array<{ postId: string; reason: string; flaggerId: string; timestamp: number; priority: 'low' | 'medium' | 'high' }> | null>(null);
   const [expandedSnapshotIds, setExpandedSnapshotIds] = useState<string[]>([]);
+  const [testMode, setTestMode] = useState(false);
+  const isFirstRender = useRef(true);
 
   const pendingSelectRef = useRef<string | null>(null);
 
@@ -380,6 +395,46 @@ const App = () => {
       deployments,
     };
   }, [activeRuleSet, currentAnalysis?.warnings.length, payload?.analytics.deployCount]);
+
+  const archivedItems = useMemo(() => {
+    const items: Array<{
+      id: string;
+      postId: string;
+      type: 'flagged' | 'removed';
+      reason: string;
+      detail: string;
+      timestamp: number;
+    }> = [];
+
+    if (flaggedPosts) {
+      flaggedPosts.forEach((post) => {
+        items.push({
+          id: `flag-${post.postId}`,
+          postId: post.postId,
+          type: 'flagged',
+          reason: post.reason,
+          detail: `Flagged by ${post.flaggerId}`,
+          timestamp: post.timestamp,
+        });
+      });
+    }
+
+    if (juryResolved) {
+      juryResolved.forEach((c) => {
+        const isRemoval = c.finalVerdict === 'remove' || String(c.finalVerdict).toLowerCase().includes('remove');
+        items.push({
+          id: `jury-${c.id}`,
+          postId: c.postId,
+          type: 'removed',
+          reason: c.reason || 'Jury resolution completed',
+          detail: `Verdict: ${(c.finalVerdict ?? c.status).toUpperCase()} · Created by ${c.createdBy}`,
+          timestamp: c.resolvedAt ?? c.createdAt,
+        });
+      });
+    }
+
+    return items.sort((a, b) => b.timestamp - a.timestamp);
+  }, [flaggedPosts, juryResolved]);
 
   const commitRuleSet = (next: RuleSet, selectRuleId?: string) => {
     startRefreshing(() => {
@@ -416,6 +471,9 @@ const App = () => {
     setIsLoadingDashboard(true);
     try {
       const nextPayload = await apiFetch<DashboardPayload>('/api/rules/dashboard');
+      if (nextPayload && nextPayload.meta && nextPayload.meta.now) {
+        serverTimeOffset = nextPayload.meta.now - Date.now();
+      }
       setPayload(nextPayload);
       setRuleSet(nextPayload.ruleSet);
       setYamlDraft(nextPayload.yaml);
@@ -444,6 +502,15 @@ const App = () => {
   useEffect(() => {
     void loadInitial();
   }, []);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    isGlobalTestModeActive = testMode;
+    void loadInitial();
+  }, [testMode]);
 
   useEffect(() => {
     if (!yamlDraft.trim()) return;
@@ -736,6 +803,13 @@ const App = () => {
         </div>
         <div className="topActions">
           <div className="statusChip">{payload?.meta.username ?? 'moderator'} · r/{payload?.meta.subredditId ?? 'unknown'}</div>
+          <button 
+            className={`btn ${testMode ? 'primary test-mode-active' : 'secondary'}`} 
+            onClick={() => setTestMode(!testMode)}
+            title="When Sandbox is active, moderation actions will not affect real Reddit posts"
+          >
+            {testMode ? '🟢 Sandbox Active' : '⚪ Sandbox Off'}
+          </button>
           <button className="btn secondary" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>
             {isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}
           </button>
@@ -748,9 +822,14 @@ const App = () => {
 
       <section className="heroGrid">
         <article className="heroCard heroLead">
-          <div className="eyebrow">Active policy state</div>
-          <div className="heroTitle">{currentAnalysis?.overallRisk === 'high' ? 'Needs a safety review' : 'Ready for deployment'}</div>
-          <p>{payload?.insights.headline ?? 'Loading current moderation signals...'}</p>
+          <div className="eyebrow">Rule Insights</div>
+          <div className="heroTitle" style={{ fontSize: '20px', fontWeight: '800', marginBottom: '12px' }}>Explainable operational summary.</div>
+          <div className="insightHeadline">{payload?.insights.headline ?? 'Loading current moderation signals...'}</div>
+          <ul className="insightList" style={{ marginBottom: '16px' }}>
+            {(payload?.insights.details ?? []).map((detail) => (
+              <li key={detail} style={{ fontSize: '13px' }}>{detail}</li>
+            ))}
+          </ul>
           <div className="heroMetaRow">
             <span>{activeMetrics.rulesCount} rules</span>
             <span>{activeMetrics.enabledCount} enabled</span>
@@ -804,7 +883,7 @@ const App = () => {
           <div className="panelHeader compact">
             <div>
               <h2>Active rules</h2>
-              <p>Reorder, duplicate, enable, or disable rules.</p>
+              <p>Reorder, enable, or disable rules.</p>
             </div>
           </div>
 
@@ -821,7 +900,6 @@ const App = () => {
                 <div className="ruleQuickActions">
                   <button className="iconButton" onClick={() => moveRule(rule.id, -1)}>↑</button>
                   <button className="iconButton" onClick={() => moveRule(rule.id, 1)}>↓</button>
-                  <button className="iconButton" onClick={() => duplicateRule(rule.id)}>⎘</button>
                   <button className="iconButton danger" onClick={() => removeRule(rule.id)}>✕</button>
                 </div>
               </div>
@@ -892,7 +970,20 @@ const App = () => {
                 </div>
 
                 <div className="conditionGroup span2">
-                  <h3>Actions</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <h3 style={{ margin: 0 }}>Actions</h3>
+                    <div style={{ display: 'flex', gap: '12px', fontSize: '11px', fontWeight: '700', color: 'var(--muted)', background: 'rgba(0,0,0,0.15)', padding: '4px 10px', borderRadius: '12px', border: '1px solid var(--stroke)' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#46d160', display: 'inline-block' }} /> Low
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ffb300', display: 'inline-block' }} /> Medium
+                      </span>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ff4500', display: 'inline-block' }} /> High
+                      </span>
+                    </div>
+                  </div>
                   <div className="actionGrid">
                     {ACTIONS.map((action) => (
                       <label key={action.value} className={`actionChip ${actionToneClass[action.value] ?? 'riskNeutral'} ${currentRule.actions.includes(action.value) ? 'selected' : ''}`}>
@@ -1120,54 +1211,68 @@ const App = () => {
               )}
             </article>
 
-            <article className="panel flaggedPostsPanel">
+            <article className="panel archivedPostsPanel">
               <div className="panelHeader compact">
                 <div>
-                  <h2>Flagged posts</h2>
-                  <p>Posts marked for review by moderators.</p>
+                  <h2>ARCHIVED POSTS</h2>
+                  <p>Unified log of flagged content and moderation removals.</p>
                 </div>
                 <button className="btn subtle" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>{isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}</button>
               </div>
-              {(!flaggedPosts || flaggedPosts.length === 0) ? (
-                <div className="emptyState">No flagged posts.</div>
+              {archivedItems.length === 0 ? (
+                <div className="emptyState">No archived or flagged posts.</div>
               ) : (
-                flaggedPosts.map((post) => (
-                  <div key={post.postId} className={`flagCard flagPriority${post.priority.charAt(0).toUpperCase() + post.priority.slice(1)}`}>
-                    <div className="flagHeader">
-                      <strong>{post.postId}</strong>
-                      <span className={`priorityBadge ${post.priority}`}>{post.priority.toUpperCase()}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {archivedItems.map((item) => (
+                    <div key={item.id} className="flagCard" style={{ borderLeft: item.type === 'removed' ? '4px solid var(--danger)' : '4px solid var(--warning)', padding: '12px' }}>
+                      <div className="flagHeader" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <strong style={{ fontFamily: 'monospace', fontSize: '13px' }}>{item.postId}</strong>
+                        <span className={`priorityBadge ${item.type === 'removed' ? 'high' : 'medium'}`} style={{ textTransform: 'uppercase', fontSize: '10px' }}>
+                          {item.type}
+                        </span>
+                      </div>
+                      <div className="flagBody" style={{ marginBottom: '8px' }}>
+                        <div className="flagReason" style={{ fontWeight: '600', fontSize: '13px', marginBottom: '4px' }}>{item.reason}</div>
+                        <div className="flagMeta" style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                          {item.detail} · {relativeTime(item.timestamp)}
+                        </div>
+                      </div>
+                      <div className="flagActions" style={{ display: 'flex', gap: '8px' }}>
+                        <a
+                          className="btn subtle"
+                          href={`https://www.reddit.com/r/modcluster_m_dev/comments/${item.postId.replace('t3_', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontSize: '11px', padding: '6px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          🔗 Link
+                        </a>
+                        <button
+                          className="btn subtle"
+                          onClick={() => {
+                            alert(`Post Details:\nPost ID: ${item.postId}\nType: ${item.type.toUpperCase()}\nReason/Verdict: ${item.reason}\nActivity Log: ${item.detail}\nTime: ${new Date(item.timestamp).toLocaleString()}`);
+                          }}
+                          style={{ fontSize: '11px', padding: '6px 12px' }}
+                        >
+                          👁 Quick View
+                        </button>
+                        {item.type === 'flagged' && (
+                          <button
+                            className="btn subtle"
+                            onClick={() => void unflagPost(item.postId)}
+                            style={{ fontSize: '11px', padding: '6px 12px', color: '#ffbac0' }}
+                          >
+                            ✕ Unflag
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flagBody">
-                      <div className="flagReason">{post.reason}</div>
-                      <div className="flagMeta">Flagged by {post.flaggerId} · {relativeTime(post.timestamp)}</div>
-                    </div>
-                    <div className="flagActions">
-                      <button className="btn subtle" onClick={() => void unflagPost(post.postId)}>Unflag</button>
-                    </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </article>
 
-            <article className="panel handoverHistoryPanel">
-              <div className="panelHeader compact">
-                <div>
-                  <h2>Handover history</h2>
-                  <p>Recent shift handover cards.</p>
-                </div>
-                <button className="btn subtle" onClick={() => void loadInitial()} disabled={isLoadingDashboard || pendingDeploy}>{isLoadingDashboard ? <><span className="spinner"/> Refreshing…</> : 'Refresh'}</button>
-              </div>
-              {(handoverHistory ?? []).length === 0 ? (
-                <div className="emptyState">No handover history yet.</div>
-              ) : (
-                (handoverHistory ?? []).slice(0, 6).map((h) => (
-                  <div key={`${h.author}-${h.timestamp}`} className="listRow">
-                    <span>{h.author}</span>
-                    <span>{relativeTime(h.timestamp)}</span>
-                  </div>
-                ))
-              )}
-            </article>
+
 
           <article className="panel feedPanel">
             <div className="panelHeader compact">
@@ -1189,25 +1294,7 @@ const App = () => {
             </div>
           </article>
 
-          <article className="panel feedPanel">
-            <div className="panelHeader compact">
-              <div>
-                <h2>Rule insights</h2>
-                <p>Explainable operational summary.</p>
-              </div>
-            </div>
-            <div className="insightHeadline">{payload?.insights.headline ?? 'Loading...'}</div>
-            <ul className="insightList">
-              {(payload?.insights.details ?? []).map((detail) => <li key={detail}>{detail}</li>)}
-            </ul>
-            {payload?.activeHandover ? (
-              <div className="handoverCard">
-                <div className="handoverTitle">Active handover</div>
-                <p>{payload.activeHandover.author} · {relativeTime(payload.activeHandover.timestamp)}</p>
-                <p>{payload.activeHandover.activeSituations || 'No active situations noted.'}</p>
-              </div>
-            ) : null}
-          </article>
+
         </aside>
       </main>
 

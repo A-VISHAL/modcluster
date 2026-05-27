@@ -40,11 +40,11 @@ export type JuryCase = {
 
 export type JuryVoteCounts = Record<JuryVoteValue, number>;
 
-export const juryActiveKey = (subredditId: string) =>
-  `jury:${subredditId}:active`;
-export const juryHistoryKey = (subredditId: string) =>
-  `jury:${subredditId}:history`;
-export const juryCaseKey = (caseId: string) => `jurycase:${caseId}`;
+export const juryActiveKey = (subredditId: string, testMode?: boolean) =>
+  `${testMode ? 'test:' : ''}jury:${subredditId}:active`;
+export const juryHistoryKey = (subredditId: string, testMode?: boolean) =>
+  `${testMode ? 'test:' : ''}jury:${subredditId}:history`;
+export const juryCaseKey = (caseId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}jurycase:${caseId}`;
 
 const JURY_THRESHOLD = 1;
 const MAX_CASES_PER_QUEUE = 100;
@@ -60,8 +60,8 @@ const parseCase = (payload: string): JuryCase | null => {
   }
 };
 
-const saveJuryCase = async (juryCase: JuryCase) => {
-  await redis.set(juryCaseKey(juryCase.id), JSON.stringify(juryCase));
+const saveJuryCase = async (juryCase: JuryCase, testMode?: boolean) => {
+  await redis.set(juryCaseKey(juryCase.id, testMode), JSON.stringify(juryCase));
 };
 
 const trimQueue = async (key: string) => {
@@ -135,9 +135,9 @@ export function createJuryCase(input: {
 }
 
 /** Store a new pending case and add it to the subreddit active jury queue. */
-export async function saveNewJuryCase(juryCase: JuryCase): Promise<void> {
-  await saveJuryCase(juryCase);
-  await redis.zAdd(juryActiveKey(juryCase.subredditId), {
+export async function saveNewJuryCase(juryCase: JuryCase, testMode?: boolean): Promise<void> {
+  await saveJuryCase(juryCase, testMode);
+  await redis.zAdd(juryActiveKey(juryCase.subredditId, testMode), {
     score: juryCase.createdAt,
     member: juryCase.id,
   });
@@ -174,17 +174,18 @@ export async function saveNewJuryCase(juryCase: JuryCase): Promise<void> {
     });
   }
 
-  await trimQueue(juryActiveKey(juryCase.subredditId));
+  await trimQueue(juryActiveKey(juryCase.subredditId, testMode));
 }
 
-export async function fetchJuryCase(caseId: string): Promise<JuryCase | null> {
-  const data = await redis.get(juryCaseKey(caseId));
+export async function fetchJuryCase(caseId: string, testMode?: boolean): Promise<JuryCase | null> {
+  const data = await redis.get(juryCaseKey(caseId, testMode));
   return data ? parseCase(data) : null;
 }
 
 const fetchCasesFromQueue = async (
   key: string,
-  limit: number
+  limit: number,
+  testMode?: boolean
 ): Promise<JuryCase[]> => {
   const ids = await redis.zRange(key, 0, limit - 1, {
     by: 'rank',
@@ -192,7 +193,7 @@ const fetchCasesFromQueue = async (
   });
 
   const cases = await Promise.all(
-    ids.map((entry: { member: string }) => fetchJuryCase(entry.member))
+    ids.map((entry: { member: string }) => fetchJuryCase(entry.member, testMode))
   );
 
   return cases.filter((juryCase): juryCase is JuryCase => juryCase !== null);
@@ -201,17 +202,19 @@ const fetchCasesFromQueue = async (
 /** Fetch active unresolved jury cases for the dashboard and vote forms. */
 export async function fetchActiveCases(
   subredditId: string,
-  limit = 10
+  limit = 10,
+  testMode?: boolean
 ): Promise<JuryCase[]> {
-  return fetchCasesFromQueue(juryActiveKey(subredditId), limit);
+  return fetchCasesFromQueue(juryActiveKey(subredditId, testMode), limit, testMode);
 }
 
 /** Fetch recently resolved cases for demo stats and auditability. */
 export async function fetchResolvedCases(
   subredditId: string,
-  limit = 10
+  limit = 10,
+  testMode?: boolean
 ): Promise<JuryCase[]> {
-  return fetchCasesFromQueue(juryHistoryKey(subredditId), limit);
+  return fetchCasesFromQueue(juryHistoryKey(subredditId, testMode), limit, testMode);
 }
 
 export const summarizeVoteCounts = (votes: JuryVote[]) => {
@@ -261,7 +264,7 @@ export async function addVote(input: {
     devMode: input.devMode,
   });
 
-  const juryCase = await fetchJuryCase(input.caseId);
+  const juryCase = await fetchJuryCase(input.caseId, input.devMode);
 
   if (!juryCase) {
     throw new Error('Jury case not found.');
@@ -439,7 +442,7 @@ export async function addVote(input: {
     }
   }
 
-  await saveJuryCase(updatedCase);
+  await saveJuryCase(updatedCase, input.devMode);
   console.log('[ModPulse][jury] case saved', {
     caseId: updatedCase.id,
     status: updatedCase.status,
@@ -448,8 +451,8 @@ export async function addVote(input: {
   });
 
   if (updatedCase.status === 'resolved') {
-    await redis.zRem(juryActiveKey(updatedCase.subredditId), [updatedCase.id]);
-    await redis.zAdd(juryHistoryKey(updatedCase.subredditId), {
+    await redis.zRem(juryActiveKey(updatedCase.subredditId, input.devMode), [updatedCase.id]);
+    await redis.zAdd(juryHistoryKey(updatedCase.subredditId, input.devMode), {
       score: updatedCase.resolvedAt ?? Date.now(),
       member: updatedCase.id,
     });
@@ -457,7 +460,7 @@ export async function addVote(input: {
       caseId: updatedCase.id,
       subredditId: updatedCase.subredditId,
     });
-    await trimQueue(juryHistoryKey(updatedCase.subredditId));
+    await trimQueue(juryHistoryKey(updatedCase.subredditId, input.devMode));
   }
 
   return {

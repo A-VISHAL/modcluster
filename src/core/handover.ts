@@ -22,8 +22,8 @@ export type HandoverCard = {
   notes: string;
 };
 
-export const handoverActiveKey = (subredditId: string) => `handover:${subredditId}:active`;
-export const handoverHistoryKey = (subredditId: string) => `handover:${subredditId}:history`;
+export const handoverActiveKey = (subredditId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}handover:${subredditId}:active`;
+export const handoverHistoryKey = (subredditId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}handover:${subredditId}:history`;
 
 /** Normalize form values into the persisted card structure. */
 export function createHandoverCard(input: {
@@ -45,10 +45,10 @@ export function createHandoverCard(input: {
 }
 
 /** Save the active card and append it to history. */
-export async function saveHandover(subredditId: string, handover: HandoverCard): Promise<void> {
+export async function saveHandover(subredditId: string, handover: HandoverCard, testMode?: boolean): Promise<void> {
   const payload = JSON.stringify(handover);
-  await redis.set(handoverActiveKey(subredditId), payload);
-  await redis.zAdd(handoverHistoryKey(subredditId), {
+  await redis.set(handoverActiveKey(subredditId, testMode), payload);
+  await redis.zAdd(handoverHistoryKey(subredditId, testMode), {
     score: handover.timestamp,
     member: payload,
   });
@@ -62,15 +62,15 @@ export async function saveHandover(subredditId: string, handover: HandoverCard):
     timestamp: handover.timestamp,
   });
 
-  const historyCount = await redis.zCard(handoverHistoryKey(subredditId));
+  const historyCount = await redis.zCard(handoverHistoryKey(subredditId, testMode));
   if (historyCount > 100) {
-    await redis.zRemRangeByRank(handoverHistoryKey(subredditId), 0, historyCount - 101);
+    await redis.zRemRangeByRank(handoverHistoryKey(subredditId, testMode), 0, historyCount - 101);
   }
 }
 
 /** Fetch the current active handover card. */
-export async function fetchActiveHandover(subredditId: string): Promise<HandoverCard | null> {
-  const data = await redis.get(handoverActiveKey(subredditId));
+export async function fetchActiveHandover(subredditId: string, testMode?: boolean): Promise<HandoverCard | null> {
+  const data = await redis.get(handoverActiveKey(subredditId, testMode));
   if (!data) {
     return null;
   }
@@ -84,8 +84,8 @@ export async function fetchActiveHandover(subredditId: string): Promise<Handover
 }
 
 /** Fetch recent handover history entries, most recent first. */
-export async function fetchHandoverHistory(subredditId: string, limit = 50): Promise<HandoverCard[]> {
-  const raw = await redis.zRange(handoverHistoryKey(subredditId), 0, limit - 1, {
+export async function fetchHandoverHistory(subredditId: string, limit = 50, testMode?: boolean): Promise<HandoverCard[]> {
+  const raw = await redis.zRange(handoverHistoryKey(subredditId, testMode), 0, limit - 1, {
     by: 'rank',
     reverse: true,
   });
