@@ -15,6 +15,7 @@ import {
 export type JuryVoteValue = 'approve' | 'remove' | 'abstain';
 export type JuryCaseStatus = 'pending' | 'resolved';
 export type JuryFinalVerdict = 'approve' | 'remove' | null;
+export type JurySeverity = 'low' | 'medium' | 'high' | 'critical';
 
 export type JuryVote = {
   moderator: string;
@@ -28,6 +29,13 @@ export type JuryCase = {
   subredditId: string;
   createdBy: string;
   createdAt: number;
+  author?: string;
+  title?: string;
+  body?: string;
+  severity?: JurySeverity;
+  deadline?: number;
+  triggeredRule?: string;
+  triggeredAction?: string;
   reason: string;
   ruleCitation: string;
   contextNotes: string;
@@ -41,10 +49,15 @@ export type JuryCase = {
 export type JuryVoteCounts = Record<JuryVoteValue, number>;
 
 export const juryActiveKey = (subredditId: string, testMode?: boolean) =>
+  `${testMode ? 'test:' : ''}jury:${subredditId}:queue`;
+export const juryQueueKey = juryActiveKey;
+export const juryLegacyActiveKey = (subredditId: string, testMode?: boolean) =>
   `${testMode ? 'test:' : ''}jury:${subredditId}:active`;
 export const juryHistoryKey = (subredditId: string, testMode?: boolean) =>
   `${testMode ? 'test:' : ''}jury:${subredditId}:history`;
 export const juryCaseKey = (caseId: string, testMode?: boolean) => `${testMode ? 'test:' : ''}jurycase:${caseId}`;
+export const juryVerdictKey = (subredditId: string, postId: string, testMode?: boolean) =>
+  `${testMode ? 'test:' : ''}jury:${subredditId}:verdict:${safeIdPart(postId)}`;
 
 const JURY_THRESHOLD = 1;
 const MAX_CASES_PER_QUEUE = 100;
@@ -62,7 +75,13 @@ const parseCase = (payload: string): JuryCase | null => {
 
 const saveJuryCase = async (juryCase: JuryCase, testMode?: boolean) => {
   await redis.set(juryCaseKey(juryCase.id, testMode), JSON.stringify(juryCase));
+  await redis.set(juryVerdictKey(juryCase.subredditId, juryCase.postId, testMode), JSON.stringify(juryCase));
 };
+
+export async function fetchJuryCaseByPost(postId: string, subredditId: string, testMode?: boolean): Promise<JuryCase | null> {
+  const data = await redis.get(juryVerdictKey(subredditId, postId, testMode));
+  return data ? parseCase(data) : null;
+}
 
 const trimQueue = async (key: string) => {
   const count = await redis.zCard(key);
@@ -111,6 +130,13 @@ export function createJuryCase(input: {
   reason: string;
   ruleCitation: string;
   contextNotes: string;
+  author?: string;
+  title?: string;
+  body?: string;
+  severity?: JurySeverity;
+  deadline?: number;
+  triggeredRule?: string;
+  triggeredAction?: string;
   createdAt?: number;
   id?: string;
 }): JuryCase {
@@ -119,7 +145,7 @@ export function createJuryCase(input: {
     input.id ??
     `${safeIdPart(input.subredditId)}-${safeIdPart(input.postId)}-${createdAt}`;
 
-  return {
+  const juryCase: JuryCase = {
     id,
     postId: input.postId,
     subredditId: input.subredditId,
@@ -132,19 +158,36 @@ export function createJuryCase(input: {
     votes: [],
     finalVerdict: null,
   };
+
+  if (input.author !== undefined) juryCase.author = input.author;
+  if (input.title !== undefined) juryCase.title = input.title;
+  if (input.body !== undefined) juryCase.body = input.body;
+  if (input.severity !== undefined) juryCase.severity = input.severity;
+  if (input.deadline !== undefined) juryCase.deadline = input.deadline;
+  if (input.triggeredRule !== undefined) juryCase.triggeredRule = input.triggeredRule;
+  if (input.triggeredAction !== undefined) juryCase.triggeredAction = input.triggeredAction;
+
+  return juryCase;
 }
 
 /** Store a new pending case and add it to the subreddit active jury queue. */
 export async function saveNewJuryCase(juryCase: JuryCase, testMode?: boolean): Promise<void> {
   await saveJuryCase(juryCase, testMode);
-  await redis.zAdd(juryActiveKey(juryCase.subredditId, testMode), {
-    score: juryCase.createdAt,
-    member: juryCase.id,
+  const score = juryCase.deadline ?? (juryCase.createdAt + 24 * 60 * 60 * 1000);
+  await redis.zAdd(juryQueueKey(juryCase.subredditId, testMode), {
+    score: score,
+    member: juryCase.postId,
   });
+  await redis.zAdd(juryLegacyActiveKey(juryCase.subredditId, testMode), {
+    score: score,
+    member: juryCase.postId,
+  });
+  console.log("Saved verdict");
+  console.log("Added to queue");
 
   await logActivity({
     subredditId: juryCase.subredditId,
-    action: 'Jury case opened',
+    action: 'Case escalated to Jury Review',
     moderator: juryCase.createdBy,
     tone: 'warn',
     detail: `${juryCase.postId} • ${juryCase.reason || 'Flagged for review.'}`,
@@ -174,7 +217,65 @@ export async function saveNewJuryCase(juryCase: JuryCase, testMode?: boolean): P
     });
   }
 
-  await trimQueue(juryActiveKey(juryCase.subredditId, testMode));
+  await trimQueue(juryQueueKey(juryCase.subredditId, testMode));
+  await trimQueue(juryLegacyActiveKey(juryCase.subredditId, testMode));
+}
+
+export async function createAndSaveJuryCase(input: {
+  postId: string;
+  subredditId: string;
+  createdBy: string;
+  reason: string;
+  ruleCitation: string;
+  contextNotes: string;
+  author?: string;
+  title?: string;
+  body?: string;
+  severity?: JurySeverity;
+  deadline?: number;
+  triggeredRule?: string;
+  triggeredAction?: string;
+  createdAt?: number;
+  id?: string;
+  testMode?: boolean;
+}): Promise<JuryCase> {
+  const existing = await fetchJuryCaseByPost(input.postId, input.subredditId, input.testMode);
+  if (existing) {
+    return existing;
+  }
+
+  console.log("JURY PIPELINE START");
+  console.log("Creating jury case", input.postId);
+
+  const juryCase = createJuryCase({
+    postId: input.postId,
+    subredditId: input.subredditId,
+    createdBy: input.createdBy,
+    reason: input.reason,
+    ruleCitation: input.ruleCitation,
+    contextNotes: input.contextNotes,
+    ...(input.author !== undefined ? { author: input.author } : {}),
+    ...(input.title !== undefined ? { title: input.title } : {}),
+    ...(input.body !== undefined ? { body: input.body } : {}),
+    ...(input.severity !== undefined ? { severity: input.severity } : {}),
+    ...(input.deadline !== undefined ? { deadline: input.deadline } : {}),
+    ...(input.triggeredRule !== undefined ? { triggeredRule: input.triggeredRule } : {}),
+    ...(input.triggeredAction !== undefined ? { triggeredAction: input.triggeredAction } : {}),
+    ...(input.createdAt !== undefined ? { createdAt: input.createdAt } : {}),
+    ...(input.id !== undefined ? { id: input.id } : {}),
+  });
+  await saveNewJuryCase(juryCase, input.testMode);
+
+  console.log('Saved verdict', {
+    caseId: juryCase.id,
+    postId: juryCase.postId,
+    subredditId: juryCase.subredditId,
+  });
+  console.log('Added to jury queue', {
+    queueKey: juryQueueKey(juryCase.subredditId, input.testMode),
+  });
+
+  return juryCase;
 }
 
 export async function fetchJuryCase(caseId: string, testMode?: boolean): Promise<JuryCase | null> {
@@ -185,15 +286,32 @@ export async function fetchJuryCase(caseId: string, testMode?: boolean): Promise
 const fetchCasesFromQueue = async (
   key: string,
   limit: number,
-  testMode?: boolean
+  subredditId: string,
+  testMode?: boolean,
+  fallbackKey?: string
 ): Promise<JuryCase[]> => {
-  const ids = await redis.zRange(key, 0, limit - 1, {
+  const primaryIds = await redis.zRange(key, 0, limit - 1, {
     by: 'rank',
     reverse: true,
   });
 
+  const fallbackIds = fallbackKey
+    ? await redis.zRange(fallbackKey, 0, limit - 1, {
+        by: 'rank',
+        reverse: true,
+      })
+    : [];
+
+  const ids = [...primaryIds, ...fallbackIds].filter(
+    (entry, index, all) => all.findIndex((candidate) => candidate.member === entry.member) === index
+  );
+
   const cases = await Promise.all(
-    ids.map((entry: { member: string }) => fetchJuryCase(entry.member, testMode))
+    ids.map(async (entry: { member: string }) => {
+      const byPost = await fetchJuryCaseByPost(entry.member, subredditId, testMode);
+      if (byPost) return byPost;
+      return fetchJuryCase(entry.member, testMode);
+    })
   );
 
   return cases.filter((juryCase): juryCase is JuryCase => juryCase !== null);
@@ -205,7 +323,15 @@ export async function fetchActiveCases(
   limit = 10,
   testMode?: boolean
 ): Promise<JuryCase[]> {
-  return fetchCasesFromQueue(juryActiveKey(subredditId, testMode), limit, testMode);
+  const cases = await fetchCasesFromQueue(
+    juryQueueKey(subredditId, testMode),
+    limit,
+    subredditId,
+    testMode,
+    juryLegacyActiveKey(subredditId, testMode)
+  );
+  console.log("Fetched pending jury cases", cases.length);
+  return cases;
 }
 
 /** Fetch recently resolved cases for demo stats and auditability. */
@@ -214,7 +340,7 @@ export async function fetchResolvedCases(
   limit = 10,
   testMode?: boolean
 ): Promise<JuryCase[]> {
-  return fetchCasesFromQueue(juryHistoryKey(subredditId, testMode), limit, testMode);
+  return fetchCasesFromQueue(juryHistoryKey(subredditId, testMode), limit, subredditId, testMode);
 }
 
 export const summarizeVoteCounts = (votes: JuryVote[]) => {
@@ -451,10 +577,11 @@ export async function addVote(input: {
   });
 
   if (updatedCase.status === 'resolved') {
-    await redis.zRem(juryActiveKey(updatedCase.subredditId, input.devMode), [updatedCase.id]);
+    await redis.zRem(juryQueueKey(updatedCase.subredditId, input.devMode), [updatedCase.postId]);
+    await redis.zRem(juryLegacyActiveKey(updatedCase.subredditId, input.devMode), [updatedCase.postId]);
     await redis.zAdd(juryHistoryKey(updatedCase.subredditId, input.devMode), {
       score: updatedCase.resolvedAt ?? Date.now(),
-      member: updatedCase.id,
+      member: updatedCase.postId,
     });
     console.log('[ModPulse][jury] moved case to resolved queue', {
       caseId: updatedCase.id,

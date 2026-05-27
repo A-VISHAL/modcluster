@@ -25,10 +25,39 @@ import {
   upsertFlaggedUser,
   createRuleTemplateCatalog,
 } from '../core/rules';
+import { sendToJuryReview } from '../core/moderation';
 import { fetchRecentActivity, logActivity } from '../core/activity';
 import { fetchActiveHandover } from '../core/handover';
 import { generateInsights } from '../core/insights';
 import { getCurrentModerator } from '../core/security';
+
+async function createJuryCase(
+  post: { id: string; author: string; title: string; body: string; createdAt: number },
+  rule: { ruleName: string; severity: 'low' | 'medium' | 'high' | 'critical' },
+  context: { subredditId: string; username: string; explanation: string; conditions: string[]; isTestMode: boolean }
+) {
+  return await sendToJuryReview({
+    postId: post.id,
+    subredditId: context.subredditId,
+    createdBy: context.username,
+    reason: context.explanation,
+    ruleCitation: rule.ruleName,
+    contextNotes: [
+      `Rule: ${rule.ruleName}`,
+      `Severity: ${rule.severity}`,
+      ...context.conditions,
+    ].join('\n'),
+    author: post.author,
+    title: post.title,
+    body: post.body,
+    severity: rule.severity,
+    deadline: Date.now() + 24 * 60 * 60 * 1000,
+    triggeredRule: rule.ruleName,
+    triggeredAction: 'send_to_jury_review',
+    createdAt: post.createdAt,
+    testMode: context.isTestMode,
+  });
+}
 
 export const rules = new Hono();
 
@@ -300,6 +329,7 @@ rules.post('/validate', async (c) => {
 });
 
 rules.post('/test', async (c) => {
+  const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
   const subredditId = requireSubredditId();
   const username = requireModerator();
   const body = await c.req.json<TestRequest>();
@@ -361,6 +391,39 @@ rules.post('/test', async (c) => {
         riskScore: decision.riskScore,
         timestamp: decision.sample.createdAt,
       }));
+    }
+
+    for (const match of decision.matchedRules) {
+      for (const action of match.actions) {
+        if (action === 'send_to_jury_review') {
+          const post = {
+            id: decision.sample.id,
+            author: decision.sample.author,
+            title: decision.sample.title,
+            body: decision.sample.body,
+            createdAt: decision.sample.createdAt,
+          };
+          const rule = {
+            ruleName: match.ruleName,
+            severity: match.severity as 'low' | 'medium' | 'high' | 'critical',
+          };
+          const ctx = {
+            subredditId,
+            username,
+            explanation: decision.explanation,
+            conditions: decision.conditions,
+            isTestMode,
+          };
+          const juryOutcome = await createJuryCase(post, rule, ctx);
+
+          console.log('[ModPulse][rules] jury escalation executed', {
+            postId: decision.sample.id,
+            ruleName: match.ruleName,
+            success: juryOutcome.success,
+            caseId: juryOutcome.caseId,
+          });
+        }
+      }
     }
   }
 

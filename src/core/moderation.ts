@@ -7,6 +7,7 @@
 
 import { reddit } from '@devvit/web/server';
 import { logActivity, type ActivityTone } from './activity';
+import { createAndSaveJuryCase, type JurySeverity } from './jury';
 
 /**
  * Ensure postId is in the correct fullname format (t3_xxx).
@@ -799,6 +800,65 @@ export async function executeImmediateAction(input: {
       details: {
         error: errorMessage,
       },
+    };
+  }
+}
+
+/**
+ * Escalate a matched post into the jury queue.
+ */
+export async function sendToJuryReview(input: {
+  postId: string;
+  subredditId: string;
+  createdBy: string;
+  reason: string;
+  ruleCitation: string;
+  contextNotes: string;
+  author?: string;
+  title?: string;
+  body?: string;
+  severity?: JurySeverity;
+  deadline?: number;
+  triggeredRule?: string;
+  triggeredAction?: string;
+  createdAt?: number;
+  testMode?: boolean;
+}): Promise<{ success: boolean; message: string; caseId?: string }> {
+  try {
+    const juryCase = await createAndSaveJuryCase({
+      postId: input.postId,
+      subredditId: input.subredditId,
+      createdBy: input.createdBy,
+      reason: input.reason,
+      ruleCitation: input.ruleCitation,
+      contextNotes: input.contextNotes,
+      ...(input.author !== undefined ? { author: input.author } : {}),
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.body !== undefined ? { body: input.body } : {}),
+      ...(input.severity !== undefined ? { severity: input.severity } : {}),
+      ...(input.deadline !== undefined ? { deadline: input.deadline } : {}),
+      ...(input.triggeredRule !== undefined ? { triggeredRule: input.triggeredRule } : {}),
+      ...(input.triggeredAction !== undefined ? { triggeredAction: input.triggeredAction } : {}),
+      createdAt: input.createdAt ?? Date.now(),
+      ...(typeof input.testMode === 'boolean' ? { testMode: input.testMode } : {}),
+    });
+
+    return {
+      success: true,
+      message: `Jury case created for ${input.postId}`,
+      caseId: juryCase.id,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[ModPulse][moderation] sendToJuryReview failed', {
+      postId: input.postId,
+      subredditId: input.subredditId,
+      errorMessage,
+    });
+
+    return {
+      success: false,
+      message: `Failed to create jury case: ${errorMessage}`,
     };
   }
 }

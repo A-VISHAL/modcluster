@@ -10,11 +10,10 @@ import { fetchRecentActivity, logActivity } from '../core/activity';
 import {
   addVote,
   countVotes,
-  createJuryCase,
+  createAndSaveJuryCase,
   fetchActiveCases,
   fetchJuryCase,
   fetchResolvedCases,
-  saveNewJuryCase,
   type JuryCase,
   type JuryVoteValue,
 } from '../core/jury';
@@ -26,6 +25,7 @@ import {
 } from '../core/security';
 import { executeImmediateAction } from '../core/moderation';
 import { generateInsights } from '../core/insights';
+import { ensureDemoSeed } from '../core/demo';
 import {
   flagPost,
   unflagPost,
@@ -49,10 +49,13 @@ export const api = new Hono();
 type DashboardJuryCase = {
   id: string;
   postId: string;
+  title: string;
   createdAt: number;
   createdBy: string;
   reason: string;
   ruleCitation: string;
+  triggeredRule: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
   contextNotes: string;
   votes: ReturnType<typeof countVotes>;
   votedModerators: string[]; // List of mods who voted
@@ -128,8 +131,6 @@ const isDemoText = (value: string | null | undefined): boolean => {
   return (
     normalized.includes('demo_case') ||
     normalized.includes('seed-') ||
-    normalized.includes('possible brigading / coordinated voting pattern detected') ||
-    normalized.includes('clustered reports') ||
     normalized.includes('t3_prev_')
   );
 };
@@ -165,6 +166,7 @@ const cleanupLegacyDemoQueueEntries = async (subredditId: string): Promise<void>
 
   try {
     await Promise.all([
+      webRedis.zRem(`jury:${subredditId}:queue`, legacyIds),
       webRedis.zRem(`jury:${subredditId}:active`, legacyIds),
       webRedis.zRem(`jury:${subredditId}:history`, legacyIds),
     ]);
@@ -437,6 +439,12 @@ api.get('/dashboard', async (c) => {
   let flagStatsRaw = { total: 0, high: 0, medium: 0, low: 0 };
 
   if (subredditId && redisConnected) {
+    await ensureDemoSeed({
+      subredditId,
+      updatedBy: username ?? 'system',
+      testMode: isTestMode,
+    });
+
     await cleanupLegacyDemoQueueEntries(subredditId);
 
     const [activeHandoverRaw, historyRaw, juryCasesRaw, resolvedCasesRaw, activityRaw, flagsRawFetched, flagStatsRawFetched] = await Promise.all([
@@ -451,9 +459,9 @@ api.get('/dashboard', async (c) => {
 
     activeHandover = activeHandoverRaw;
     history = historyRaw;
-    juryCases = juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
-    resolvedCases = resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
-    activityForMetrics = activityRaw.filter((event) => !isDemoActivity(event));
+    juryCases = isTestMode ? juryCasesRaw : juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    resolvedCases = isTestMode ? resolvedCasesRaw : resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    activityForMetrics = isTestMode ? activityRaw : activityRaw.filter((event) => !isDemoActivity(event));
     activity = activityForMetrics.slice(0, 12);
     flagsRaw = flagsRawFetched;
     flagStatsRaw = flagStatsRawFetched;
@@ -500,10 +508,13 @@ api.get('/dashboard', async (c) => {
     const base: DashboardJuryCase = {
       id: juryCase.id,
       postId: juryCase.postId,
+      title: juryCase.title ?? juryCase.postId,
       createdAt: juryCase.createdAt,
       createdBy: juryCase.createdBy,
       reason: juryCase.reason,
       ruleCitation: juryCase.ruleCitation,
+      triggeredRule: juryCase.triggeredRule ?? juryCase.ruleCitation,
+      severity: juryCase.severity ?? 'medium',
       contextNotes: juryCase.contextNotes,
       votes,
       votedModerators: juryCase.votes.map(v => v.moderator),
@@ -621,6 +632,12 @@ api.post('/jury/case', async (c) => {
     reason?: string;
     ruleCitation?: string;
     contextNotes?: string;
+    author?: string;
+    title?: string;
+    body?: string;
+    severity?: 'low' | 'medium' | 'high' | 'critical';
+    deadline?: number;
+    triggeredRule?: string;
     priority?: 'low' | 'medium' | 'high';
   }>();
 
@@ -636,24 +653,26 @@ api.post('/jury/case', async (c) => {
     timestamp: now,
   });
 
-  const juryCase = createJuryCase({
+  const juryCase = await createAndSaveJuryCase({
     subredditId,
     postId,
     createdBy: username,
     reason: (input.reason ?? '').trim() || 'Flagged for jury review.',
     ruleCitation: (input.ruleCitation ?? '').trim() || 'Unspecified',
-    contextNotes: (input.contextNotes ?? '').trim(),
+    contextNotes: (() => {
+      const baseNotes = (input.contextNotes ?? '').trim();
+      const priority = clampPriority(input.priority);
+      return priority === 'medium' ? baseNotes : `${baseNotes}\n\n[Priority: ${priority}]`.trim();
+    })(),
+    ...(input.author?.trim() ? { author: input.author.trim() } : {}),
+    ...(input.title?.trim() ? { title: input.title.trim() } : {}),
+    ...(input.body?.trim() ? { body: input.body.trim() } : {}),
+    ...(input.severity !== undefined ? { severity: input.severity } : {}),
+    ...(input.deadline !== undefined ? { deadline: input.deadline } : {}),
+    ...(input.triggeredRule?.trim() ? { triggeredRule: input.triggeredRule.trim() } : {}),
     createdAt: now,
+    ...(isTestMode ? { testMode: true } : {}),
   });
-
-  // For hackathon/demo polish we persist priority as a hint inside contextNotes.
-  // (We keep the core model stable; UI uses this only as a display cue.)
-  const priority = clampPriority(input.priority);
-  if (priority !== 'medium') {
-    juryCase.contextNotes = `${juryCase.contextNotes}\n\n[Priority: ${priority}]`.trim();
-  }
-
-  await saveNewJuryCase(juryCase, isTestMode);
 
   console.log('[ModPulse][security] jury case created', {
     caseId: juryCase.id,

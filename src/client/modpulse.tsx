@@ -147,6 +147,23 @@ type DashboardPayload = {
   activeHandover: null | { author: string; timestamp: number; activeSituations: string; usersToWatch: string; priorityPosts: string; notes: string };
 };
 
+type JuryBoardCase = {
+  id: string;
+  postId: string;
+  title: string;
+  createdAt: number;
+  createdBy: string;
+  reason: string;
+  ruleCitation: string;
+  triggeredRule: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  contextNotes: string;
+  votes?: { approve: number; remove: number; abstain: number };
+  status: 'pending' | 'resolved';
+  finalVerdict?: 'approve' | 'remove' | null;
+  resolvedAt?: number;
+};
+
 type ValidationResponse = {
   ok: boolean;
   ruleSet: RuleSet;
@@ -361,12 +378,13 @@ const App = () => {
   const [needsDangerousConfirm, setNeedsDangerousConfirm] = useState(false);
   const [showAllWarnings, setShowAllWarnings] = useState(false);
   const [pendingDeploy, setPendingDeploy] = useState(false);
+  const [runningTest, setRunningTest] = useState(false);
   const [isRefreshing, startRefreshing] = useTransition();
   const [isLoadingDashboard, setIsLoadingDashboard] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; kind?: 'success' | 'error' | 'info' | 'warn' }>>([]);
   const deferredYaml = useDeferredValue(yamlDraft);
-  const [juryPending, setJuryPending] = useState<DashboardPayload['livePreview'] | null>(null);
-  const [juryResolved, setJuryResolved] = useState<any[] | null>(null);
+  const [juryPending, setJuryPending] = useState<JuryBoardCase[] | null>(null);
+  const [juryResolved, setJuryResolved] = useState<JuryBoardCase[] | null>(null);
   const [handoverHistory, setHandoverHistory] = useState<Array<{ author: string; timestamp: number; activeSituations?: string; notes?: string }>>([]);
   const [flaggedPosts, setFlaggedPosts] = useState<Array<{ postId: string; reason: string; flaggerId: string; timestamp: number; priority: 'low' | 'medium' | 'high' }> | null>(null);
   const [expandedSnapshotIds, setExpandedSnapshotIds] = useState<string[]>([]);
@@ -644,22 +662,33 @@ const App = () => {
 
   const runTest = async () => {
     if (!activeRuleSet) return;
-    const response = await apiFetch<TestResponse>('/api/rules/test', { yaml: yamlDraft, ruleSet: activeRuleSet });
-    setTestResults(response);
-    setPayload((current) => current ? {
-      ...current,
-      analytics: response.analytics,
-      flaggedUsers: response.flaggedUsers,
-      events: response.events,
-      ruleSet: response.ruleSet,
-      yaml: serializeRuleSet(response.ruleSet),
-      analysis: response.analysis,
-      livePreview: response.decisions,
-    } : current);
-    setRuleSet(response.ruleSet);
-    setYamlDraft(serializeRuleSet(response.ruleSet));
-    setAnalysis(response.analysis);
-    setShowAllWarnings(false);
+    setRunningTest(true);
+    try {
+      const response = await apiFetch<TestResponse>('/api/rules/test', { yaml: yamlDraft, ruleSet: activeRuleSet });
+      setTestResults(response);
+      setPayload((current) => current ? {
+        ...current,
+        analytics: response.analytics,
+        flaggedUsers: response.flaggedUsers,
+        events: response.events,
+        ruleSet: response.ruleSet,
+        yaml: serializeRuleSet(response.ruleSet),
+        analysis: response.analysis,
+        livePreview: response.decisions,
+      } : current);
+      setRuleSet(response.ruleSet);
+      setYamlDraft(serializeRuleSet(response.ruleSet));
+      setAnalysis(response.analysis);
+      setShowAllWarnings(false);
+
+      // Pull the operational board immediately so new jury cases appear without a manual refresh.
+      await loadInitial();
+      showToast('Live test completed', 'success');
+    } catch (err) {
+      showToast(`Live test failed: ${err instanceof Error ? err.message : String(err)}`, 'error');
+    } finally {
+      setRunningTest(false);
+    }
   };
 
   const deployRules = async (confirmDangerous: boolean) => {
@@ -1059,7 +1088,9 @@ const App = () => {
                 <h2>Live rule tester</h2>
                 <p>Matches the current policy against recent subreddit content.</p>
               </div>
-              <button className="btn subtle" onClick={() => void runTest()}>Run</button>
+              <button className="btn subtle" type="button" onClick={() => void runTest()} disabled={runningTest}>
+                {runningTest ? 'Running…' : 'Run'}
+              </button>
             </div>
             <div className="testerSummary">
               <div className="miniMetric"><span>Allowed</span><strong>{testResults ? testResults.decisions.filter((decision) => decision.status === 'allowed').length : payload?.livePreview.filter((decision) => decision.status === 'allowed').length ?? 0}</strong></div>
@@ -1169,16 +1200,18 @@ const App = () => {
               {(!juryPending || juryPending.length === 0) ? (
                 <div className="emptyState">No pending jury cases.</div>
               ) : (
-                juryPending.map((c: any) => (
+                juryPending.map((c) => (
                   <div key={c.id} className="juryCard">
                     <div className="juryHeader">
-                      <strong>{c.postId}</strong>
-                      <span>{c.priority?.toUpperCase() ?? 'MED'}</span>
+                      <strong>{c.title}</strong>
+                      <span>{c.severity.toUpperCase()}</span>
                     </div>
                     <div className="juryBody">
-                      <div className="juryReason">{c.reason}</div>
-                      <div className="juryMeta">{c.contextNotes}</div>
-                      <div className="juryVotes">Remove: {c.votes?.remove ?? 0} · Approve: {c.votes?.approve ?? 0} · Abstain: {c.votes?.abstain ?? 0}</div>
+                      <div className="juryMeta"><strong>Post Title:</strong> {c.title}</div>
+                      <div className="juryMeta"><strong>Triggered Rule:</strong> {c.triggeredRule}</div>
+                      <div className="juryMeta"><strong>Severity:</strong> {c.severity}</div>
+                      <div className="juryMeta"><strong>Status:</strong> {c.status}</div>
+                      <div className="juryMeta"><strong>Time:</strong> {relativeTime(c.createdAt)}</div>
                     </div>
                     <div className="juryActions">
                       <button className="btn danger" onClick={() => void voteOnCase(c.id, 'remove')}>Vote Remove</button>
@@ -1202,7 +1235,7 @@ const App = () => {
               {(juryResolved && juryResolved.length) ? (
                 juryResolved.map((c: any) => (
                   <div key={c.id} className="listRow">
-                    <span>{c.postId} · {c.finalVerdict ? c.finalVerdict.toUpperCase() : c.status}</span>
+                    <span>{c.title ?? c.postId} · {c.finalVerdict ? c.finalVerdict.toUpperCase() : c.status}</span>
                     <span>{relativeTime(c.resolvedAt ?? c.createdAt)}</span>
                   </div>
                 ))
