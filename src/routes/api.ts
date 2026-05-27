@@ -37,7 +37,7 @@ import {
 export const api = new Hono();
 
 /**
- * API routes used by the ModPulse custom post webview.
+ * API routes used by the ModCluster custom post webview.
  *
  * Architecture notes:
  * - We keep the webview "dumb": it renders UI + calls these endpoints.

@@ -798,7 +798,7 @@ const App = () => {
       <header className="topbar">
         <div>
           <div className="eyebrow">Programmable moderation infrastructure</div>
-          <h1>ModPulse Rules Engine</h1>
+          <h1>ModCluster Rules Engine</h1>
           <p className="lede">Build, preview, test, deploy, and roll back moderation rules with transparent YAML and visual controls.</p>
         </div>
         <div className="topActions">

@@ -1,6 +1,6 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
-  "name": "modcluster-m",
+  "name": "modcluster",
   "post": {
     "dir": "dist/client",
     "entrypoints": {
@@ -34,11 +34,11 @@
         "endpoint": "/internal/menu/mop-post"
       },
       {
-        "label": "Create ModPulse Post",
-        "description": "Creates a ModPulse custom post (Devvit Web) in this subreddit.",
+        "label": "Create ModCluster Post",
+        "description": "Creates a ModCluster custom post in this subreddit.",
         "location": "subreddit",
         "forUserType": "moderator",
-        "endpoint": "/internal/menu/modpulse-create"
+        "endpoint": "/internal/menu/modcluster-create"
       }
     ]
   },
@@ -66,6 +66,6 @@
     "redis": true
   },
   "dev": {
-    "subreddit": "modcluster_m_dev"
+    "subreddit": "modcluster_dev"
   }
 }

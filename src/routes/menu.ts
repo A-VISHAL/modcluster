@@ -145,26 +145,26 @@ menu.post('/handover-view', async (c) => {
   );
 });
 
-menu.post('/modpulse-create', async (c) => {
+menu.post('/modcluster-create', async (c) => {
   await c.req.json<MenuItemRequest>();
 
   try {
     const created = await reddit.submitCustomPost({
-      title: `ModPulse (${new Date().toLocaleString()})`,
+      title: `ModCluster (${new Date().toLocaleString()})`,
       entry: 'default',
     });
 
     return c.json<UiResponse>(
       {
-        showToast: `Created ModPulse post: ${created.id}`,
+        showToast: `Created ModCluster post: ${created.id}`,
       },
       200
     );
   } catch (err) {
-    console.error('Failed to create ModPulse custom post', err);
+    console.error('Failed to create ModCluster custom post', err);
     return c.json<UiResponse>(
       {
-        showToast: 'Failed to create ModPulse post. Check logs for details.',
+        showToast: 'Failed to create ModCluster post. Check logs for details.',
       },
       200
     );

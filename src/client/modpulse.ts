@@ -1,4 +1,4 @@
-console.log('[ModPulse Web] DASHBOARD V2.3 PROGRESSIVE DISCLOSURE ACTIVE');
+console.log('[ModCluster Web] DASHBOARD V2.3 PROGRESSIVE DISCLOSURE ACTIVE');
 
 type DashboardPayload = {
   meta: {
