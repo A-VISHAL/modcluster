@@ -1,4 +1,5 @@
 # ModCluster
+<<<<<<< HEAD
 ## Collaborative Moderation Infrastructure for Reddit
 
 ModCluster is a Devvit-native moderation platform designed for Reddit moderator teams.
@@ -142,64 +143,93 @@ ModCluster supports collaborative workflows for sensitive moderation situations.
 #### Jury Review
 
 Borderline moderation cases can be escalated to a Jury Board.
+=======
 
-Workflow:
+ModCluster is a Devvit-native moderation platform built for Reddit moderator teams.
 
-Post flagged  
-→ Case opened  
-→ Moderators vote  
-→ Consensus reached  
-→ Action executed
+It combines moderation automation, rule management, collaborative moderation, and moderator coordination directly inside Reddit.
 
-Votes include:
+Rather than treating moderation as isolated actions, ModCluster provides moderators with a shared moderation workspace where policies can be configured, validated, deployed, and reviewed with operational visibility.
 
-- Approve
-- Remove
-- Abstain
-
-Consensus-based moderation improves transparency and reduces unilateral decision-making.
+Built with Devvit, TypeScript, React, Redis, and Reddit APIs.
 
 ---
+
+## Why ModCluster
+
+Traditional moderation tools focus on isolated actions.
+
+# ModCluster
+
+ModCluster is a Devvit-native moderation platform for Reddit moderator teams. It combines rule management, moderation automation, collaboration, and operational visibility in one workspace built directly inside Reddit.
+
+Built with Devvit, TypeScript, React, Vite, Redis, Hono, YAML, and Reddit APIs.
+
+---
+
+## What It Does
+
+ModCluster gives moderators a shared workspace where they can:
+
+- create and edit moderation rules in a visual editor or YAML
+- validate rules before deployment
+- test rule behavior against sample content
+- deploy and rollback rule sets safely
+- review analytics, activity, and flagged users
+- coordinate sensitive cases with other moderators
+- preserve shift handover context
+- use moderator menu actions and bulk moderation tools
+
+All moderation state is backed by Redis and executed through Devvit and Reddit APIs.
+
+---
+
+## Core Features
+
+### Rule Authoring
+
+Moderators can build rules using templates, a blank rule editor, or YAML. Rules support conditions like account age, karma, posting rate, repeated links, suspicious domains, keyword triggers, spam signals, toxicity signals, and other risk patterns.
+
+Supported actions include removing content, filtering to review, sending to jury review, adding moderator notes, notifying moderators, locking threads, and temporary moderation actions.
+
+### Validation and Live Testing
+
+Before deployment, ModCluster analyzes rules for duplicate logic, conflicts, dangerous removals, broad matches, and other risks. Moderators can preview matched content, triggered conditions, confidence, risk scores, and sample decisions before rules affect live communities.
+
+### Deployment and Rollback
+
+Deployments create Redis snapshots, store history, and update analytics. Moderators can restore earlier versions or roll back instantly when needed. Risky deployments may require extra confirmation.
+
+### Dashboard and Insights
+
+The React dashboard shows moderation activity, event history, queue pressure, repeated offenders, flagged users, rule analytics, workload indicators, and operational insights.
+
+### Collaborative Moderation
+
+Borderline cases can be escalated to jury review. Moderators can open a case, vote approve/remove/abstain, and review resolved verdicts. This improves transparency and reduces one-person decision making.
 
 ### Shift Handover
 
-Moderator teams can preserve operational context across shifts.
+Outgoing moderators can submit active situations, users to watch, priority posts, escalation notes, and moderation guidance. Incoming moderators can immediately see the current handover and unresolved context.
 
-Outgoing moderators can submit:
+### Moderator Menu Tools
 
-- active situations
-- users to monitor
-- priority posts
-- escalation notes
-- moderation guidance
-
-Incoming moderators immediately see current moderation status and unresolved situations.
-
-This reduces duplicated investigation and improves team coordination.
+The app exposes Reddit menu actions such as Mop Post and Mop Comments, plus forms for workflow shortcuts and bulk moderation actions.
 
 ---
 
-## How ModCluster Solves Moderation Problems
+## How It Works
 
-Traditional moderation tools focus on individual actions.
+1. Moderators create or edit rules in the Devvit Web dashboard.
+2. The app validates the rules and shows warnings or risk analysis.
+3. Moderators run tests to preview how rules will behave.
+4. When deployed, the rule set is saved with snapshots and analytics.
+5. Moderation actions run through Devvit and Reddit APIs.
+6. Activity, events, and insights are logged back into the dashboard.
 
-ModCluster focuses on moderation workflows.
+Data flow:
 
-Instead of moderators working independently, ModCluster creates:
-
-- shared moderation context
-- safer automation deployment
-- collaborative decision-making
-- transparent moderation history
-- operational visibility
-
-This helps moderation teams:
-
-- save moderation time
-- reduce repetitive review work
-- avoid context loss
-- reduce moderator burnout
-- maintain more consistent moderation decisions
+UI -> validation/testing -> snapshot storage and analytics -> deployment -> moderation execution -> activity logging -> dashboard insights
 
 ---
 
@@ -208,27 +238,21 @@ This helps moderation teams:
 | Layer | Stack |
 |---|---|
 | Frontend | React · Devvit Web · TypeScript · Vite |
-| Backend | Devvit Handlers · Triggers · Scheduler · Hono |
+| Backend | Devvit handlers · triggers · scheduler · Hono |
 | Storage | Redis |
 | Platform | Devvit · Reddit API |
 
-Redis acts as the operational source of truth for:
+---
 
-- handovers
-- moderation rules
-- jury workflows
-- activity history
-- analytics
+## Why It Exists
 
-Fully Devvit-native with no external infrastructure required.
+ModCluster is designed for active moderator teams that need safer automation, consistent decisions, and less context loss between shifts. It focuses on moderation workflows instead of isolated actions.
 
 ---
 
-## Quick Start
+## Links
 
-```bash
-npm install -g devvit
-npm install
-devvit login
-devvit playtest
-devvit upload
+GitHub: https://github.com/A-VISHAL/modcluster
+
+Playtest: https://www.reddit.com/r/modcluster_dev/?playtest=modcluster
+
