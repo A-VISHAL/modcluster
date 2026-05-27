@@ -410,6 +410,7 @@ const buildAiOutput = (input: {
 
 api.get('/dashboard', async (c) => {
   const isTestMode = c.req.header('X-ModPulse-Test-Mode') === 'true';
+  const isDevMode = process.env.NODE_ENV !== 'production';
   const now = Date.now();
   const subredditId = context.subredditId ?? null;
   const username = context.username ?? null;
@@ -459,8 +460,30 @@ api.get('/dashboard', async (c) => {
 
     activeHandover = activeHandoverRaw;
     history = historyRaw;
-    juryCases = isTestMode ? juryCasesRaw : juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
-    resolvedCases = isTestMode ? resolvedCasesRaw : resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+
+    // If no operational cases are present, attempt to seed demo content and
+    // re-fetch so the UI shows meaningful demonstration items immediately.
+    const noCasesPresent = (juryCasesRaw.length === 0 && resolvedCasesRaw.length === 0);
+    if (noCasesPresent && !isTestMode) {
+      try {
+        await ensureDemoSeed({ subredditId, updatedBy: username ?? 'system', force: true });
+        // Re-fetch cases after seeding
+        const [reFetchedPending, reFetchedResolved] = await Promise.all([
+          fetchActiveCases(subredditId, 20, isTestMode),
+          fetchResolvedCases(subredditId, 20, isTestMode),
+        ]);
+        juryCasesRaw.push(...reFetchedPending);
+        resolvedCasesRaw.push(...reFetchedResolved);
+      } catch (err) {
+        console.warn('[ModPulse][api] demo seeding attempt failed', err instanceof Error ? err.message : String(err));
+      }
+    }
+
+    // In test mode or developer mode, return demo cases unfiltered so the
+    // dashboard always shows seeded demonstration content for local testing.
+    const returnRawCases = isTestMode || isDevMode;
+    juryCases = returnRawCases ? juryCasesRaw : juryCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
+    resolvedCases = returnRawCases ? resolvedCasesRaw : resolvedCasesRaw.filter((juryCase) => !isDemoCase(juryCase));
     activityForMetrics = isTestMode ? activityRaw : activityRaw.filter((event) => !isDemoActivity(event));
     activity = activityForMetrics.slice(0, 12);
     flagsRaw = flagsRawFetched;
